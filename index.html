@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Formular Ersteller</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="toolbar">
+            <div class="toolbar-left">
+                <div class="logo">
+                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="32" height="32" rx="6" fill="#3498db"/>
+                        <rect x="6" y="8" width="20" height="16" rx="2" fill="white" stroke="#2c3e50" stroke-width="1"/>
+                        <rect x="8" y="12" width="8" height="1" fill="#2c3e50"/>
+                        <rect x="8" y="15" width="12" height="1" fill="#2c3e50"/>
+                        <rect x="8" y="18" width="6" height="1" fill="#2c3e50"/>
+                        <circle cx="22" cy="13" r="1.5" fill="#2c3e50"/>
+                        <rect x="20.5" y="16" width="3" height="1" fill="#2c3e50"/>
+                    </svg>
+                    <span class="logo-text">PDF Form Creator</span>
+                </div>
+                <button id="aboutBtn" class="about-btn">ℹ️ Über</button>
+            </div>
+            <div class="toolbar-group">
+                <button id="addTextField" class="tool-btn">📝 Textfeld</button>
+                <button id="addDropdown" class="tool-btn">📋 Dropdown</button>
+                <button id="addRadio" class="tool-btn">⭕ Radio</button>
+                <button id="addCheckbox" class="tool-btn">☑️ Checkbox</button>
+                <button id="addText" class="tool-btn">🔤 Text</button>
+                <button id="addImage" class="tool-btn">🖼️ Bild</button>
+                <button id="addSubmit" class="tool-btn">📤 Senden</button>
+            </div>
+            <div class="toolbar-group">
+                <button id="toggleGrid" class="tool-btn">⚏ Gitter</button>
+                <button id="undoBtn" class="tool-btn" title="Rückgängig (Strg+Z)">↶ Rückgängig</button>
+                <button id="redoBtn" class="tool-btn" title="Wiederherstellen (Strg+Y)">↷ Wiederherstellen</button>
+                <button id="exportPDF" class="action-btn">📄 PDF exportieren</button>
+                <button id="importPDF" class="action-btn">📄 PDF importieren</button>
+                <input type="file" id="pdfFileInput" style="display: none;" accept=".pdf">
+                <input type="file" id="imageFileInput" style="display: none;" accept="image/*">
+            </div>
+        </header>
+        
+        <main class="editor-container">
+            <div class="page" id="page">
+                <div class="page-navigation">
+                    <button id="prevPage" class="nav-btn">‹ Vorherige</button>
+                    <span id="pageInfo">Seite 1 von 1</span>
+                    <button id="nextPage" class="nav-btn">Nächste ›</button>
+                    <button id="addPage" class="nav-btn add-page">+ Seite</button>
+                    <button id="deletePage" class="nav-btn delete-page">🗑️</button>
+                </div>
+                <div class="page-content" id="pageContent">
+                </div>
+            </div>
+            
+            <div class="properties-panel" id="propertiesPanel">
+                <h3>Eigenschaften</h3>
+                <div id="propertyContent">
+                    <p>Wählen Sie ein Element aus</p>
+                </div>
+                
+                <div class="element-order-panel">
+                    <h3>Element-Reihenfolge</h3>
+                    <div id="elementOrderList">
+                        <p>Keine Elemente</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <div class="alignment-line horizontal" id="horizontalLine"></div>
+    <div class="alignment-line vertical" id="verticalLine"></div>
+    
+    <!-- About Modal -->
+    <div id="aboutModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🔧 PDF Form Creator</h2>
+                <span class="close" id="closeModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <h3>📋 Über diese Anwendung</h3>
+                <p>Der PDF Form Creator ist ein browserbasierter Editor zum Erstellen ausfüllbarer PDF-Formulare ohne Serveranbindung. Alle Daten bleiben lokal auf Ihrem Computer.</p>
+                
+                <h3>🎯 Hauptfunktionen</h3>
+                <ul>
+                    <li><strong>Drag & Drop Editor:</strong> Ziehen Sie Formularelemente frei auf die Seite</li>
+                    <li><strong>Verschiedene Feldtypen:</strong> Text, Dropdown, Radio, Checkbox, Select</li>
+                    <li><strong>Text & Bilder:</strong> Fügen Sie statische Texte und Bilder hinzu</li>
+                    <li><strong>Präzise Positionierung:</strong> Raster und Ausrichtungshilfen</li>
+                    <li><strong>Größenänderung:</strong> Elemente über Anfasser anpassen</li>
+                    <li><strong>Eigenschaften-Panel:</strong> Detaillierte Konfiguration aller Elemente</li>
+                    <li><strong>Element-Reihenfolge:</strong> Tab-Reihenfolge manuell anpassbar</li>
+                </ul>
+                
+                <h3>💾 Workflow</h3>
+                <ol>
+                    <li><strong>Erstellen:</strong> Formularelemente auf die Seite ziehen</li>
+                    <li><strong>Anpassen:</strong> Position, Größe und Eigenschaften konfigurieren</li>
+                    <li><strong>Exportieren:</strong> Als ausfüllbares PDF speichern</li>
+                    <li><strong>Weiterbearbeiten:</strong> PDF wieder importieren und bearbeiten</li>
+                </ol>
+                
+                <h3>🔄 PDF-Integration</h3>
+                <p>Besonderheit: Die Formular-Konfiguration wird <strong>direkt in das PDF eingebettet</strong>. Das bedeutet:</p>
+                <ul>
+                    <li>Keine separaten Konfigurationsdateien nötig</li>
+                    <li>PDF enthält sowohl ausfüllbares Formular als auch Bearbeitungsdaten</li>
+                    <li>Einfacher Austausch und Archivierung</li>
+                    <li>Wiedereröffnen zum Weiterbearbeiten jederzeit möglich</li>
+                </ul>
+                
+                <h3>🛠️ Bedienung</h3>
+                <ul>
+                    <li><strong>Element hinzufügen:</strong> Button in Toolbar klicken</li>
+                    <li><strong>Element auswählen:</strong> Klicken Sie auf das Element</li>
+                    <li><strong>Verschieben:</strong> Element ziehen</li>
+                    <li><strong>Größe ändern:</strong> An den blauen Anfassern ziehen</li>
+                    <li><strong>Eigenschaften:</strong> Rechtes Panel nutzen</li>
+                    <li><strong>Reihenfolge:</strong> Pfeile im Element-Reihenfolge Panel</li>
+                    <li><strong>Gitter:</strong> "⚏ Gitter" Button zum Ein-/Ausblenden</li>
+                </ul>
+                
+                <h3>📄 Unterstützte Elemente</h3>
+                <ul>
+                    <li><strong>📝 Textfeld:</strong> Einzeiliger Text-Input</li>
+                    <li><strong>📋 Dropdown:</strong> Auswahlliste mit Optionen</li>
+                    <li><strong>⭕ Radio:</strong> Einfachauswahl-Buttons</li>
+                    <li><strong>☑️ Checkbox:</strong> Mehrfachauswahl-Optionen</li>
+                    <li><strong>🔤 Text:</strong> Statischer Text (nicht ausfüllbar)</li>
+                    <li><strong>🖼️ Bild:</strong> Bilder einfügen</li>
+                    <li><strong>📤 Senden:</strong> Submit-Button mit E-Mail/Webhook</li>
+                </ul>
+                
+                <div class="version-info">
+                    <small>Version 1.0 - Entwickelt für moderne Browser</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
