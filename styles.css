@@ -230,7 +230,7 @@ body {
     padding: 2px;
     cursor: move;
     min-width: 100px;
-    min-height: 30px;
+    min-height: 24px;
 }
 
 .form-element:hover {

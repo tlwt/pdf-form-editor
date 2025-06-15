@@ -159,13 +159,19 @@ function addFormElement(type) {
         x: 50,
         y: 50,
         width: 200,
-        height: type === 'image' ? 150 : 40,  // Default height for images
+        height: type === 'image' ? 150 : 28,  // Default height for form fields
         label: getDefaultLabel(type),
         name: `field_${elementIdCounter}`,
         required: false,
         value: '',
         options: type === 'dropdown' || type === 'radio' || type === 'checkbox' ? ['Option 1', 'Option 2'] : []
     };
+    
+    // Initialize font properties for static text elements
+    if (type === 'staticText') {
+        element.fontFamily = defaultFontFamily;
+        element.fontSize = defaultFontSize;
+    }
     
     // Find free position for new element
     const position = findFreePosition(element.width, element.height);
@@ -711,7 +717,19 @@ function deleteSelectedElements() {
     selectedElements.forEach(element => {
         const index = formElements.findIndex(el => el.id === element.id);
         if (index > -1) {
+            // Remove from formElements array
             formElements.splice(index, 1);
+            
+            // Also remove from pages array
+            const pageData = pages.find(p => p.id === element.pageId || p.id === currentPage);
+            if (pageData) {
+                const pageIndex = pageData.elements.findIndex(el => el.id === element.id);
+                if (pageIndex > -1) {
+                    pageData.elements.splice(pageIndex, 1);
+                }
+            }
+            
+            // Remove DOM element
             document.getElementById(element.id).remove();
         }
     });
@@ -1147,23 +1165,23 @@ document.addEventListener('mousemove', (e) => {
         switch(resizePosition) {
             case 'se':
                 selectedElement.width = Math.max(100, mouseX - selectedElement.x);
-                selectedElement.height = Math.max(30, mouseY - selectedElement.y);
+                selectedElement.height = Math.max(24, mouseY - selectedElement.y);
                 break;
             case 'sw':
                 const newWidth = Math.max(100, selectedElement.x + selectedElement.width - mouseX);
                 selectedElement.x = mouseX;
                 selectedElement.width = newWidth;
-                selectedElement.height = Math.max(30, mouseY - selectedElement.y);
+                selectedElement.height = Math.max(24, mouseY - selectedElement.y);
                 break;
             case 'ne':
                 selectedElement.width = Math.max(100, mouseX - selectedElement.x);
-                const newHeight = Math.max(30, selectedElement.y + selectedElement.height - mouseY);
+                const newHeight = Math.max(24, selectedElement.y + selectedElement.height - mouseY);
                 selectedElement.y = mouseY;
                 selectedElement.height = newHeight;
                 break;
             case 'nw':
                 const newW = Math.max(100, selectedElement.x + selectedElement.width - mouseX);
-                const newH = Math.max(30, selectedElement.y + selectedElement.height - mouseY);
+                const newH = Math.max(24, selectedElement.y + selectedElement.height - mouseY);
                 selectedElement.x = mouseX;
                 selectedElement.y = mouseY;
                 selectedElement.width = newW;
@@ -2013,7 +2031,7 @@ async function exportToPDF() {
                 try {
                     const font = await getPDFFont(element.fontFamily);
                     const textContent = stripHtmlForPDF(element.value || '');
-                    const fontSize = Math.min(parseInt(element.fontSize) || defaultFontSize, 14); // Cap static text at 14pt
+                    const fontSize = parseInt(element.fontSize) || defaultFontSize; // Use actual font size without capping
                     
                     // Handle multi-line text by splitting on newlines
                     const lines = textContent.split('\n');
@@ -2566,7 +2584,19 @@ deleteElement = function() {
     
     const index = formElements.findIndex(el => el.id === selectedElement.id);
     if (index > -1) {
+        // Remove from formElements array
         formElements.splice(index, 1);
+        
+        // Also remove from pages array
+        const pageData = pages.find(p => p.id === currentPage);
+        if (pageData) {
+            const pageIndex = pageData.elements.findIndex(el => el.id === selectedElement.id);
+            if (pageIndex > -1) {
+                pageData.elements.splice(pageIndex, 1);
+            }
+        }
+        
+        // Remove DOM element
         document.getElementById(selectedElement.id).remove();
         selectedElement = null;
         showGeneralProperties();
