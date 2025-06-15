@@ -1,10 +1,17 @@
 let selectedElement = null;
+let selectedElements = []; // Array for multi-selection
+let isMultiSelecting = false; // Track if shift/ctrl is held
+let isDragSelecting = false; // Track rectangle selection
+let dragSelectStart = { x: 0, y: 0 };
+let dragSelectPerformed = false; // Track if drag selection was actually performed
 let isDragging = false;
 let isResizing = false;
 let dragOffset = { x: 0, y: 0 };
 let draggedElement = null; // Track which element is being dragged
 let formElements = [];
 let elementIdCounter = 0;
+let groups = []; // Store group information
+let groupIdCounter = 0;
 let gridVisible = true;
 let formName = 'Neues Formular';
 let defaultFontFamily = 'Arial';
@@ -56,6 +63,7 @@ updatePageNavigation();
 
 // Auto-load page properties on startup
 showGeneralProperties();
+updateGroupsList();
 
 // Notification System
 function showNotification(title, message, type = 'info', duration = 5000, showProgress = false) {
@@ -263,7 +271,11 @@ function createFormElementDOM(element) {
     });
     
     div.addEventListener('mousedown', startDrag);
-    div.addEventListener('click', () => selectElement(element));
+    div.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent page click handler from firing
+        const isMultiSelect = e.ctrlKey || e.metaKey || e.shiftKey;
+        selectElement(element, isMultiSelect);
+    });
     
     page.appendChild(div);
 }
@@ -345,14 +357,335 @@ function updateFormElementContent(div, element) {
     div.insertBefore(contentDiv, div.firstChild);
 }
 
-function selectElement(element) {
-    // Remove previous selection
+function selectElement(element, addToSelection = false) {
+    if (!addToSelection) {
+        // Single selection - clear all previous selections
+        clearSelection();
+        selectedElement = element;
+        selectedElements = [element];
+        
+        // If element is part of a group, select the entire group
+        if (element.groupId && !addToSelection) {
+            selectGroup(element.groupId);
+            return;
+        }
+    } else {
+        // Multi-selection - add/remove from selection
+        const index = selectedElements.findIndex(el => el.id === element.id);
+        if (index > -1) {
+            // Element already selected - remove it
+            selectedElements.splice(index, 1);
+            document.getElementById(element.id).classList.remove('selected');
+            if (selectedElements.length === 0) {
+                selectedElement = null;
+            } else {
+                selectedElement = selectedElements[selectedElements.length - 1]; // Last selected becomes primary
+            }
+        } else {
+            // Add element to selection
+            selectedElements.push(element);
+            selectedElement = element; // Set as primary selection
+            document.getElementById(element.id).classList.add('selected');
+        }
+    }
+    
+    // Update visual selection for single selection
+    if (!addToSelection) {
+        document.getElementById(element.id).classList.add('selected');
+    }
+    
+    // Update properties panel
+    if (selectedElements.length === 1) {
+        showProperties(selectedElement);
+    } else if (selectedElements.length > 1) {
+        showMultiSelectionProperties();
+    } else {
+        showGeneralProperties();
+    }
+}
+
+function clearSelection() {
+    // Remove visual selection from all elements
     document.querySelectorAll('.form-element').forEach(el => el.classList.remove('selected'));
+    selectedElement = null;
+    selectedElements = [];
+}
+
+function showMultiSelectionProperties() {
+    const hasGroupedElements = selectedElements.some(el => el.groupId);
     
-    selectedElement = element;
-    document.getElementById(element.id).classList.add('selected');
+    propertiesPanel.innerHTML = `
+        <h3>Mehrfachauswahl</h3>
+        <div class="property-group">
+            <label>${selectedElements.length} Elemente ausgewählt</label>
+            <div style="margin-top: 10px;">
+                ${!hasGroupedElements ? 
+                    '<button onclick="groupSelectedElements()" class="action-btn" style="width: 100%; margin-bottom: 5px;">🔗 Gruppieren</button>' :
+                    '<button onclick="ungroupSelectedElements()" class="action-btn" style="width: 100%; margin-bottom: 5px; background-color: #e67e22;">🔗 Auflösen</button>'
+                }
+                <button onclick="alignSelectedElements('left')" class="tool-btn" style="width: 48%; margin-right: 2%;">⬅️ Links</button>
+                <button onclick="alignSelectedElements('right')" class="tool-btn" style="width: 48%;">➡️ Rechts</button>
+                <button onclick="alignSelectedElements('top')" class="tool-btn" style="width: 48%; margin-top: 5px; margin-right: 2%;">⬆️ Oben</button>
+                <button onclick="alignSelectedElements('bottom')" class="tool-btn" style="width: 48%; margin-top: 5px;">⬇️ Unten</button>
+                <button onclick="distributeSelectedElements('horizontal')" class="tool-btn" style="width: 48%; margin-top: 5px; margin-right: 2%;">↔️ Horizontal</button>
+                <button onclick="distributeSelectedElements('vertical')" class="tool-btn" style="width: 48%; margin-top: 5px;">↕️ Vertikal</button>
+            </div>
+        </div>
+        <div class="property-group">
+            <label>Aktionen</label>
+            <button onclick="deleteSelectedElements()" class="tool-btn" style="width: 100%; background-color: #e74c3c; color: white;">🗑️ Löschen</button>
+        </div>
+    `;
+}
+
+function groupSelectedElements() {
+    if (selectedElements.length < 2) {
+        showNotification('Gruppierung', 'Mindestens 2 Elemente müssen ausgewählt sein', 'warning');
+        return;
+    }
     
-    showProperties(element);
+    saveState(); // For undo functionality
+    
+    // Create a group object
+    const groupId = `group_${groupIdCounter++}`;
+    const group = {
+        id: groupId,
+        name: `Gruppe ${groups.length + 1}`,
+        elementIds: selectedElements.map(el => el.id),
+        created: new Date(),
+        x: Math.min(...selectedElements.map(el => el.x)),
+        y: Math.min(...selectedElements.map(el => el.y)),
+        width: Math.max(...selectedElements.map(el => el.x + el.width)) - Math.min(...selectedElements.map(el => el.x)),
+        height: Math.max(...selectedElements.map(el => el.y + el.height)) - Math.min(...selectedElements.map(el => el.y))
+    };
+    
+    // Add group to groups array
+    groups.push(group);
+    
+    // Add group property to each element
+    selectedElements.forEach(element => {
+        element.groupId = groupId;
+        
+        // Add visual group indicator
+        const elementDiv = document.getElementById(element.id);
+        elementDiv.classList.add('grouped');
+        elementDiv.setAttribute('data-group-id', groupId);
+    });
+    
+    showNotification('Gruppierung', `${selectedElements.length} Elemente zu "${group.name}" gruppiert`, 'success');
+    updateGroupsList();
+    showMultiSelectionProperties();
+}
+
+function ungroupSelectedElements() {
+    if (selectedElements.length === 0) return;
+    
+    saveState(); // For undo functionality
+    
+    const groupIds = [...new Set(selectedElements.filter(el => el.groupId).map(el => el.groupId))];
+    
+    groupIds.forEach(groupId => {
+        // Remove group from groups array
+        const groupIndex = groups.findIndex(g => g.id === groupId);
+        if (groupIndex > -1) {
+            groups.splice(groupIndex, 1);
+        }
+        
+        // Remove group property from elements
+        formElements.forEach(element => {
+            if (element.groupId === groupId) {
+                delete element.groupId;
+                
+                // Remove visual group indicator
+                const elementDiv = document.getElementById(element.id);
+                elementDiv.classList.remove('grouped');
+                elementDiv.removeAttribute('data-group-id');
+            }
+        });
+    });
+    
+    showNotification('Gruppierung', 'Gruppierung aufgehoben', 'success');
+    updateGroupsList();
+    showMultiSelectionProperties();
+}
+
+function selectGroup(groupId) {
+    const group = groups.find(g => g.id === groupId);
+    if (!group) return;
+    
+    clearSelection();
+    
+    group.elementIds.forEach(elementId => {
+        const element = formElements.find(el => el.id === elementId);
+        if (element) {
+            selectedElements.push(element);
+            document.getElementById(element.id).classList.add('selected');
+        }
+    });
+    
+    if (selectedElements.length > 0) {
+        selectedElement = selectedElements[0];
+        showMultiSelectionProperties();
+    }
+}
+
+function updateGroupsList() {
+    const groupsContainer = document.getElementById('groupsList');
+    if (!groupsContainer) return;
+    
+    if (groups.length === 0) {
+        groupsContainer.innerHTML = '<p style="color: #666; font-style: italic;">Keine Gruppen vorhanden</p>';
+        return;
+    }
+    
+    const groupsHTML = groups.map(group => `
+        <div class="group-item" onclick="selectGroup('${group.id}')">
+            <div class="group-info">
+                <span class="group-name">${group.name}</span>
+                <span class="group-count">${group.elementIds.length} Elemente</span>
+            </div>
+            <div class="group-actions">
+                <button onclick="selectGroup('${group.id}'); event.stopPropagation();" class="tool-btn" style="padding: 2px 6px; font-size: 11px;">Auswählen</button>
+                <button onclick="deleteGroup('${group.id}'); event.stopPropagation();" class="tool-btn" style="padding: 2px 6px; font-size: 11px; background-color: #e74c3c; color: white;">Löschen</button>
+            </div>
+        </div>
+    `).join('');
+    
+    groupsContainer.innerHTML = groupsHTML;
+}
+
+function deleteGroup(groupId) {
+    const group = groups.find(g => g.id === groupId);
+    if (!group) return;
+    
+    if (confirm(`Gruppe "${group.name}" löschen? Alle ${group.elementIds.length} Elemente werden entfernt.`)) {
+        saveState(); // For undo functionality
+        
+        // Delete all elements in the group
+        group.elementIds.forEach(elementId => {
+            const elementIndex = formElements.findIndex(el => el.id === elementId);
+            if (elementIndex > -1) {
+                formElements.splice(elementIndex, 1);
+                const elementDiv = document.getElementById(elementId);
+                if (elementDiv) elementDiv.remove();
+            }
+        });
+        
+        // Remove group
+        const groupIndex = groups.findIndex(g => g.id === groupId);
+        if (groupIndex > -1) {
+            groups.splice(groupIndex, 1);
+        }
+        
+        clearSelection();
+        updateGroupsList();
+        updateElementOrderList();
+        showNotification('Gruppe gelöscht', `"${group.name}" wurde entfernt`, 'success');
+    }
+}
+
+function alignSelectedElements(direction) {
+    if (selectedElements.length < 2) {
+        showNotification('Ausrichtung', 'Mindestens 2 Elemente müssen ausgewählt sein', 'warning');
+        return;
+    }
+    
+    saveState(); // For undo functionality
+    
+    let referenceValue;
+    switch (direction) {
+        case 'left':
+            referenceValue = Math.min(...selectedElements.map(el => el.x));
+            selectedElements.forEach(element => {
+                element.x = referenceValue;
+                document.getElementById(element.id).style.left = element.x + 'px';
+            });
+            break;
+        case 'right':
+            referenceValue = Math.max(...selectedElements.map(el => el.x + el.width));
+            selectedElements.forEach(element => {
+                element.x = referenceValue - element.width;
+                document.getElementById(element.id).style.left = element.x + 'px';
+            });
+            break;
+        case 'top':
+            referenceValue = Math.min(...selectedElements.map(el => el.y));
+            selectedElements.forEach(element => {
+                element.y = referenceValue;
+                document.getElementById(element.id).style.top = element.y + 'px';
+            });
+            break;
+        case 'bottom':
+            referenceValue = Math.max(...selectedElements.map(el => el.y + el.height));
+            selectedElements.forEach(element => {
+                element.y = referenceValue - element.height;
+                document.getElementById(element.id).style.top = element.y + 'px';
+            });
+            break;
+    }
+    
+    showNotification('Ausrichtung', `Elemente ${direction === 'left' ? 'links' : direction === 'right' ? 'rechts' : direction === 'top' ? 'oben' : 'unten'} ausgerichtet`, 'success');
+}
+
+function distributeSelectedElements(direction) {
+    if (selectedElements.length < 3) {
+        showNotification('Verteilung', 'Mindestens 3 Elemente müssen ausgewählt sein', 'warning');
+        return;
+    }
+    
+    saveState(); // For undo functionality
+    
+    const sortedElements = [...selectedElements].sort((a, b) => {
+        return direction === 'horizontal' ? a.x - b.x : a.y - b.y;
+    });
+    
+    const first = sortedElements[0];
+    const last = sortedElements[sortedElements.length - 1];
+    
+    if (direction === 'horizontal') {
+        const totalSpace = (last.x + last.width) - first.x;
+        const elementSpace = sortedElements.reduce((sum, el) => sum + el.width, 0);
+        const gap = (totalSpace - elementSpace) / (sortedElements.length - 1);
+        
+        let currentX = first.x + first.width + gap;
+        for (let i = 1; i < sortedElements.length - 1; i++) {
+            sortedElements[i].x = currentX;
+            document.getElementById(sortedElements[i].id).style.left = currentX + 'px';
+            currentX += sortedElements[i].width + gap;
+        }
+    } else {
+        const totalSpace = (last.y + last.height) - first.y;
+        const elementSpace = sortedElements.reduce((sum, el) => sum + el.height, 0);
+        const gap = (totalSpace - elementSpace) / (sortedElements.length - 1);
+        
+        let currentY = first.y + first.height + gap;
+        for (let i = 1; i < sortedElements.length - 1; i++) {
+            sortedElements[i].y = currentY;
+            document.getElementById(sortedElements[i].id).style.top = currentY + 'px';
+            currentY += sortedElements[i].height + gap;
+        }
+    }
+    
+    showNotification('Verteilung', `Elemente ${direction === 'horizontal' ? 'horizontal' : 'vertikal'} verteilt`, 'success');
+}
+
+function deleteSelectedElements() {
+    if (selectedElements.length === 0) return;
+    
+    saveState(); // For undo functionality
+    
+    selectedElements.forEach(element => {
+        const index = formElements.findIndex(el => el.id === element.id);
+        if (index > -1) {
+            formElements.splice(index, 1);
+            document.getElementById(element.id).remove();
+        }
+    });
+    
+    showNotification('Löschen', `${selectedElements.length} Elemente gelöscht`, 'success');
+    clearSelection();
+    showGeneralProperties();
+    updateElementOrderList();
 }
 
 function showProperties(element) {
@@ -554,11 +887,24 @@ function startDrag(e) {
     draggedElement = formElements.find(el => el.id === element.id);
     if (!draggedElement) return;
     
+    // If dragging a non-selected element, select only this element
+    if (!selectedElements.includes(draggedElement)) {
+        selectElement(draggedElement);
+    }
+    
     isDragging = true;
     dragOffset.x = e.clientX - rect.left;
     dragOffset.y = e.clientY - rect.top;
     
-    element.classList.add('dragging');
+    // Calculate relative positions for all selected elements
+    window.dragOffsets = {};
+    selectedElements.forEach(el => {
+        window.dragOffsets[el.id] = {
+            x: el.x - draggedElement.x,
+            y: el.y - draggedElement.y
+        };
+        document.getElementById(el.id).classList.add('dragging');
+    });
 }
 
 function startResize(e, position) {
@@ -569,20 +915,20 @@ function startResize(e, position) {
 
 document.addEventListener('mousemove', (e) => {
     if (isDragging && draggedElement) {
-        const element = document.getElementById(draggedElement.id);
         const pageRect = page.getBoundingClientRect();
         
         let newX = e.clientX - pageRect.left - dragOffset.x;
         let newY = e.clientY - pageRect.top - dragOffset.y;
         
-        // Snap to alignment
+        // Snap to alignment (only for primary dragged element)
         const snapThreshold = 10;
         const elements = document.querySelectorAll('.form-element');
         let showHorizontal = false;
         let showVertical = false;
         
         elements.forEach(el => {
-            if (el.id === draggedElement.id) return;
+            // Skip elements that are currently being dragged
+            if (selectedElements.some(sel => sel.id === el.id)) return;
             
             const elRect = el.getBoundingClientRect();
             const elX = elRect.left - pageRect.left;
@@ -606,15 +952,121 @@ document.addEventListener('mousemove', (e) => {
         horizontalLine.style.display = showHorizontal ? 'block' : 'none';
         verticalLine.style.display = showVertical ? 'block' : 'none';
         
+        // Calculate movement delta
+        const deltaX = Math.max(0, newX) - draggedElement.x;
+        const deltaY = Math.max(0, newY) - draggedElement.y;
+        
+        // Move all selected elements together
+        selectedElements.forEach(el => {
+            const newElementX = Math.max(0, draggedElement.x + window.dragOffsets[el.id].x + deltaX);
+            const newElementY = Math.max(0, draggedElement.y + window.dragOffsets[el.id].y + deltaY);
+            
+            el.x = newElementX;
+            el.y = newElementY;
+            
+            const elementDiv = document.getElementById(el.id);
+            elementDiv.style.left = el.x + 'px';
+            elementDiv.style.top = el.y + 'px';
+        });
+        
+        // Update primary dragged element position
         draggedElement.x = Math.max(0, newX);
         draggedElement.y = Math.max(0, newY);
-        
-        element.style.left = draggedElement.x + 'px';
-        element.style.top = draggedElement.y + 'px';
         
         // Update properties if this is the selected element
         if (selectedElement && selectedElement.id === draggedElement.id) {
             showProperties(selectedElement);
+        }
+    }
+    
+    // Handle drag selection
+    if (isDragSelecting) {
+        const pageRect = page.getBoundingClientRect();
+        const currentX = e.clientX - pageRect.left;
+        const currentY = e.clientY - pageRect.top;
+        
+        // Check if mouse has moved enough to start selection
+        const dragDistance = Math.abs(currentX - dragSelectStart.x) + Math.abs(currentY - dragSelectStart.y);
+        if (dragDistance > 5 && !dragSelectPerformed) {
+            dragSelectPerformed = true;
+            
+            // Clear selection if not holding modifier keys
+            if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+                clearSelection();
+            }
+            
+            // Create selection rectangle
+            const selectionBox = document.createElement('div');
+            selectionBox.id = 'selectionBox';
+            selectionBox.style.position = 'absolute';
+            selectionBox.style.border = '2px dashed #3498db';
+            selectionBox.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+            selectionBox.style.pointerEvents = 'none';
+            selectionBox.style.zIndex = '1000';
+            selectionBox.style.left = dragSelectStart.x + 'px';
+            selectionBox.style.top = dragSelectStart.y + 'px';
+            selectionBox.style.width = '0px';
+            selectionBox.style.height = '0px';
+            page.appendChild(selectionBox);
+        }
+        
+        const selectionBox = document.getElementById('selectionBox');
+        if (selectionBox) {
+            const left = Math.min(dragSelectStart.x, currentX);
+            const top = Math.min(dragSelectStart.y, currentY);
+            const width = Math.abs(currentX - dragSelectStart.x);
+            const height = Math.abs(currentY - dragSelectStart.y);
+            
+            selectionBox.style.left = left + 'px';
+            selectionBox.style.top = top + 'px';
+            selectionBox.style.width = width + 'px';
+            selectionBox.style.height = height + 'px';
+            
+            // Find elements within selection rectangle
+            const selectRect = {
+                left: left,
+                top: top,
+                right: left + width,
+                bottom: top + height
+            };
+            
+            formElements.forEach(element => {
+                if (element.pageId !== currentPage) return;
+                
+                const elementRect = {
+                    left: element.x,
+                    top: element.y,
+                    right: element.x + element.width,
+                    bottom: element.y + element.height
+                };
+                
+                // Check if element overlaps with selection rectangle
+                const overlaps = !(elementRect.right < selectRect.left || 
+                                 elementRect.left > selectRect.right || 
+                                 elementRect.bottom < selectRect.top || 
+                                 elementRect.top > selectRect.bottom);
+                
+                const elementDiv = document.getElementById(element.id);
+                if (overlaps) {
+                    if (!selectedElements.includes(element)) {
+                        selectedElements.push(element);
+                        elementDiv.classList.add('selected');
+                    }
+                } else {
+                    const index = selectedElements.indexOf(element);
+                    if (index > -1) {
+                        selectedElements.splice(index, 1);
+                        elementDiv.classList.remove('selected');
+                    }
+                }
+            });
+            
+            // Update selected element to last one
+            if (selectedElements.length > 0) {
+                selectedElement = selectedElements[selectedElements.length - 1];
+            } else {
+                selectedElement = null;
+            }
         }
     }
     
@@ -741,10 +1193,50 @@ function handleImageUpload(e) {
 }
 
 page.addEventListener('click', (e) => {
-    if (e.target === page) {
-        selectedElement = null;
-        document.querySelectorAll('.form-element').forEach(el => el.classList.remove('selected'));
+    if (e.target === page && !dragSelectPerformed) {
+        clearSelection();
         showGeneralProperties();
+    }
+    
+    // Reset drag select flag after a short delay to allow for click events
+    setTimeout(() => {
+        dragSelectPerformed = false;
+    }, 10);
+});
+
+// Add drag selection functionality
+page.addEventListener('mousedown', (e) => {
+    if (e.target === page && !isDragging) {
+        isDragSelecting = true;
+        dragSelectPerformed = false;
+        const pageRect = page.getBoundingClientRect();
+        dragSelectStart.x = e.clientX - pageRect.left;
+        dragSelectStart.y = e.clientY - pageRect.top;
+        
+        // Don't create selection box immediately - wait for movement
+    }
+});
+
+
+// Global mouseup handler to catch releases outside the page area
+document.addEventListener('mouseup', (e) => {
+    if (isDragSelecting) {
+        isDragSelecting = false;
+        
+        // Remove selection box
+        const selectionBox = document.getElementById('selectionBox');
+        if (selectionBox) {
+            selectionBox.remove();
+        }
+        
+        // Update properties panel
+        if (selectedElements.length === 1) {
+            showProperties(selectedElement);
+        } else if (selectedElements.length > 1) {
+            showMultiSelectionProperties();
+        } else {
+            showGeneralProperties();
+        }
     }
 });
 
@@ -1717,7 +2209,10 @@ function handleKeyDown(e) {
     switch(e.key) {
         case 'Delete':
         case 'Backspace':
-            if (selectedElement) {
+            if (selectedElements.length > 1) {
+                deleteSelectedElements();
+                e.preventDefault();
+            } else if (selectedElement) {
                 deleteElement();
                 e.preventDefault();
             }
@@ -1750,7 +2245,9 @@ function saveState() {
     const state = {
         formElements: JSON.parse(JSON.stringify(formElements)),
         elementIdCounter: elementIdCounter,
-        formName: formName
+        formName: formName,
+        groups: JSON.parse(JSON.stringify(groups)),
+        groupIdCounter: groupIdCounter
     };
     
     undoStack.push(state);
@@ -1773,7 +2270,9 @@ function undo() {
     const currentState = {
         formElements: JSON.parse(JSON.stringify(formElements)),
         elementIdCounter: elementIdCounter,
-        formName: formName
+        formName: formName,
+        groups: JSON.parse(JSON.stringify(groups)),
+        groupIdCounter: groupIdCounter
     };
     redoStack.push(currentState);
     
@@ -1791,7 +2290,9 @@ function redo() {
     const currentState = {
         formElements: JSON.parse(JSON.stringify(formElements)),
         elementIdCounter: elementIdCounter,
-        formName: formName
+        formName: formName,
+        groups: JSON.parse(JSON.stringify(groups)),
+        groupIdCounter: groupIdCounter
     };
     undoStack.push(currentState);
     
@@ -1810,14 +2311,25 @@ function restoreState(state) {
     formElements = state.formElements;
     elementIdCounter = state.elementIdCounter;
     formName = state.formName;
+    groups = state.groups || [];
+    groupIdCounter = state.groupIdCounter || 0;
     selectedElement = null;
+    selectedElements = [];
     
     // Recreate DOM elements
     formElements.forEach(element => {
         createFormElementDOM(element);
+        
+        // Restore group visual indicators
+        if (element.groupId) {
+            const elementDiv = document.getElementById(element.id);
+            elementDiv.classList.add('grouped');
+            elementDiv.setAttribute('data-group-id', element.groupId);
+        }
     });
     
     updateElementOrderList();
+    updateGroupsList();
     showGeneralProperties();
 }
 

@@ -394,6 +394,12 @@ body {
     padding-top: 20px;
 }
 
+.groups-panel {
+    margin-top: 30px;
+    border-top: 1px solid #ddd;
+    padding-top: 20px;
+}
+
 .element-order-item {
     display: flex;
     align-items: center;
@@ -721,4 +727,56 @@ body {
 
 .notification.warning .notification-progress-bar {
     background-color: #f39c12;
+}
+
+/* Group Styling */
+.form-element.grouped {
+    border-left: 4px solid #9b59b6 !important;
+    background-color: rgba(155, 89, 182, 0.05);
+}
+
+.form-element.grouped.selected {
+    border-color: #2980b9 !important;
+    border-left-color: #9b59b6 !important;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.3), inset 0 0 0 1px rgba(155, 89, 182, 0.3);
+}
+
+.group-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px;
+    margin-bottom: 8px;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.group-item:hover {
+    background-color: #e9ecef;
+}
+
+.group-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.group-name {
+    font-weight: bold;
+    color: #2c3e50;
+    font-size: 14px;
+}
+
+.group-count {
+    font-size: 12px;
+    color: #666;
+    margin-top: 2px;
+}
+
+.group-actions {
+    display: flex;
+    gap: 4px;
 }
