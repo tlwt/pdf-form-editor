@@ -50,11 +50,12 @@ document.getElementById('addSubmit').addEventListener('click', () => addFormElem
 
 document.getElementById('exportPDF').addEventListener('click', exportToPDF);
 document.getElementById('importPDF').addEventListener('click', () => {
-    document.getElementById('pdfFileInput').click();
+    document.getElementById('jsonFileInput').click();
 });
 document.getElementById('imageFileInput').addEventListener('change', handleImageUpload);
 document.getElementById('toggleGrid').addEventListener('click', toggleGrid);
 document.getElementById('pdfFileInput').addEventListener('change', importFromPDF);
+document.getElementById('jsonFileInput').addEventListener('change', importFromJSON);
 document.getElementById('aboutBtn').addEventListener('click', openAboutModal);
 document.getElementById('closeModal').addEventListener('click', closeAboutModal);
 document.getElementById('undoBtn').addEventListener('click', undo);
@@ -360,8 +361,8 @@ function updateFormElementContent(div, element) {
                 contentDiv.innerHTML = `
                     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #666; text-align: center; background: #f8f9fa; border-radius: 4px; border: 2px dashed #ddd;">
                         <div style="font-size: 24px; margin-bottom: 8px;">🖼️</div>
-                        <div style="font-size: 14px;">Klicken Sie zum Hochladen</div>
-                        <div style="font-size: 12px; margin-top: 4px; opacity: 0.7;">oder verwenden Sie die Eigenschaften</div>
+                        <div style="font-size: 14px;">Kein Bild ausgewählt</div>
+                        <div style="font-size: 12px; margin-top: 4px; opacity: 0.7;">Verwenden Sie die Eigenschaften zum Hochladen</div>
                     </div>
                 `;
             }
@@ -1222,9 +1223,9 @@ function handleImageUpload(e) {
         return;
     }
     
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-        showNotification('Fehler', 'Die Bilddatei ist zu groß. Maximale Größe: 5MB', 'error');
+    // Validate file size (max 10MB for upload, will be compressed for PDF)
+    if (file.size > 10 * 1024 * 1024) {
+        showNotification('Fehler', 'Die Bilddatei ist zu groß. Maximale Größe: 10MB', 'error');
         return;
     }
     
@@ -1297,6 +1298,42 @@ function selectImageForElement() {
     if (selectedElement && selectedElement.type === 'image') {
         document.getElementById('imageFileInput').click();
     }
+}
+
+// Function to compress image for PDF export
+function compressImageForPDF(imageSrc, maxWidth = 800, maxHeight = 600, quality = 0.8) {
+    return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        
+        img.onload = () => {
+            // Calculate new dimensions while maintaining aspect ratio
+            let { width, height } = img;
+            
+            if (width > maxWidth || height > maxHeight) {
+                const scale = Math.min(maxWidth / width, maxHeight / height);
+                width *= scale;
+                height *= scale;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Set white background for transparent images
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw and compress image
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Convert to compressed data URL
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+            resolve(compressedDataUrl);
+        };
+        
+        img.src = imageSrc;
+    });
 }
 
 page.addEventListener('click', (e) => {
@@ -1836,17 +1873,30 @@ async function exportToPDF() {
             case 'image':
                 if (element.src) {
                     try {
+                        // Check if image needs compression (if it's very large)
+                        const response = await fetch(element.src);
+                        const originalBytes = await response.arrayBuffer();
+                        
+                        let finalImageSrc = element.src;
+                        let imageBytes = originalBytes;
+                        
+                        // Only compress if image is larger than 2MB
+                        if (originalBytes.byteLength > 2 * 1024 * 1024) {
+                            finalImageSrc = await compressImageForPDF(element.src, 1200, 900, 0.85);
+                            const compressedResponse = await fetch(finalImageSrc);
+                            imageBytes = await compressedResponse.arrayBuffer();
+                        }
+                        
                         // Better MIME type detection
-                        const mimeMatch = element.src.match(/data:image\/([^;]+)/);
+                        const mimeMatch = finalImageSrc.match(/data:image\/([^;]+)/);
                         const mimeType = mimeMatch ? mimeMatch[1].toLowerCase() : 'jpeg';
                         
-                        const imageBytes = await fetch(element.src).then(res => res.arrayBuffer());
-                        
                         let image;
-                        if (mimeType === 'png') {
+                        if (mimeType === 'png' && originalBytes.byteLength <= 2 * 1024 * 1024) {
+                            // Keep PNG format for small images
                             image = await pdfDoc.embedPng(imageBytes);
                         } else {
-                            // Default to JPEG for all other formats (jpg, jpeg, etc.)
+                            // Use JPEG for large or compressed images
                             image = await pdfDoc.embedJpg(imageBytes);
                         }
                         
@@ -1884,20 +1934,25 @@ async function exportToPDF() {
     
     updateNotificationProgress(notificationId, 70);
     
-    // Embed form configuration as PDF metadata
+    // Create configuration object for JSON export
     const config = {
         formName: formName,
         formElements: formElements,
+        pages: pages,
+        currentPage: currentPage,
+        totalPages: totalPages,
         pageSettings: {
             width: 794,
             height: 1123
-        }
+        },
+        exportDate: new Date().toISOString()
     };
     
-    // Add configuration as custom property
+    // Set basic PDF metadata (no longer storing config here)
     pdfDoc.setTitle(formName);
-    pdfDoc.setSubject('PDF Formular Ersteller Configuration');
-    pdfDoc.setKeywords(['form-creator-config', JSON.stringify(config)]);
+    pdfDoc.setSubject('PDF Formular - Erstellt mit PDF Form Creator');
+    pdfDoc.setCreator('PDF Form Creator');
+    pdfDoc.setProducer('PDF Form Creator');
     
     updateNotificationProgress(notificationId, 90);
     
@@ -1934,10 +1989,31 @@ async function exportToPDF() {
         return;
     }
     
+    // Also download the JSON configuration
+    try {
+        const jsonFilename = `${safeFormName}_${dateStr}_${timeStr}_config.json`;
+        const jsonBlob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+        const jsonUrl = URL.createObjectURL(jsonBlob);
+        const jsonA = document.createElement('a');
+        jsonA.href = jsonUrl;
+        jsonA.download = jsonFilename;
+        
+        document.body.appendChild(jsonA);
+        jsonA.click();
+        document.body.removeChild(jsonA);
+        
+        setTimeout(() => {
+            URL.revokeObjectURL(jsonUrl);
+        }, 100);
+    } catch (jsonDownloadError) {
+        console.error('JSON download error:', jsonDownloadError);
+        showNotification('Warnung', 'PDF wurde erstellt, aber Konfigurationsdatei konnte nicht heruntergeladen werden.', 'warning');
+    }
+    
     updateNotificationProgress(notificationId, 100);
     setTimeout(() => {
         hideNotification(notificationId);
-        showNotification('Export erfolgreich', `PDF wurde als "${filename}" heruntergeladen`, 'success');
+        showNotification('Export erfolgreich', 'PDF und Konfigurationsdatei wurden heruntergeladen!', 'success');
     }, 500);
     
     // Clear unsaved changes warning after successful export
@@ -2068,51 +2144,25 @@ function loadPageElements() {
     showGeneralProperties();
 }
 
-async function importFromPDF(e) {
+async function importFromJSON(e) {
     const file = e.target.files[0];
     if (!file) return;
     
     try {
-        const arrayBuffer = await file.arrayBuffer();
-        const { PDFDocument } = PDFLib;
-        const pdfDoc = await PDFDocument.load(arrayBuffer);
+        // Read the JSON file
+        const text = await file.text();
+        const config = JSON.parse(text);
         
-        // Read metadata
-        const keywords = pdfDoc.getKeywords();
-        const subject = pdfDoc.getSubject();
-        
-        // Check if this is a form creator PDF
-        if (subject !== 'PDF Formular Ersteller Configuration') {
-            showNotification('PDF Import Fehler', 'Diese PDF-Datei wurde nicht mit dem Formular Ersteller erstellt oder enthält keine Konfiguration.', 'error');
+        // Validate that this is a valid configuration
+        if (!config.formElements && !config.formName) {
+            showNotification('Import fehlgeschlagen', 'Die JSON-Datei enthält keine gültige Formular-Konfiguration.', 'error');
             return;
         }
-        
-        // Extract configuration from keywords
-        let configData = null;
-        if (Array.isArray(keywords)) {
-            // Keywords is an array
-            const configKeyword = keywords.find(k => k.startsWith('{'));
-            if (configKeyword) {
-                configData = configKeyword;
-            }
-        } else if (typeof keywords === 'string') {
-            // Keywords is a string, look for JSON in it
-            const match = keywords.match(/\{.*\}/);
-            if (match) {
-                configData = match[0];
-            }
-        }
-        
-        if (!configData) {
-            showNotification('Konfiguration fehlt', 'Keine Konfigurationsdaten in der PDF gefunden.', 'warning');
-            return;
-        }
-        
-        const config = JSON.parse(configData);
         
         // Clear existing elements
         page.innerHTML = '';
         formElements = [];
+        selectedElement = null;
         
         // Load elements and form name
         if (config.formElements) {
@@ -2137,14 +2187,47 @@ async function importFromPDF(e) {
             formName = config.formName;
         }
         
-        // Show general properties if no element is selected
+        // Restore page data if available
+        if (config.pages) {
+            pages = config.pages;
+            currentPage = config.currentPage || 1;
+            totalPages = config.totalPages || pages.length;
+            updatePageNavigation();
+            loadPageElements();
+        } else {
+            // If no page data, ensure we have at least one page
+            if (pages.length === 0) {
+                pages = [{ id: 1, elements: formElements, header: '', footer: '' }];
+                currentPage = 1;
+                totalPages = 1;
+                updatePageNavigation();
+            }
+        }
+        
+        // Clear undo/redo stacks
+        undoStack = [];
+        redoStack = [];
+        updateUndoRedoButtons();
+        
+        // Show general properties
         showGeneralProperties();
         
-        showNotification('Import erfolgreich', 'Konfiguration erfolgreich aus PDF geladen!', 'success');
+        showNotification('Import erfolgreich', `Formular "${formName}" wurde erfolgreich geladen!`, 'success');
+        
+        // Reset file input
+        e.target.value = '';
+        
     } catch (error) {
-        console.error('Error loading PDF:', error);
-        showNotification('Import fehlgeschlagen', 'Fehler beim Laden der PDF-Konfiguration: ' + error.message, 'error');
+        console.error('Error loading JSON:', error);
+        showNotification('Import fehlgeschlagen', 'Fehler beim Laden der Konfiguration: ' + error.message, 'error');
+        e.target.value = '';
     }
+}
+
+// Keep the old PDF import function for backwards compatibility (but no longer used in UI)
+async function importFromPDF(e) {
+    showNotification('PDF Import nicht unterstützt', 'Bitte verwenden Sie die JSON-Konfigurationsdatei zum Import.', 'warning');
+    e.target.value = '';
 }
 
 function toggleGrid() {
