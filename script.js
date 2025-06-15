@@ -159,7 +159,7 @@ function addFormElement(type) {
         x: 50,
         y: 50,
         width: 200,
-        height: type === 'image' ? 150 : 28,  // Default height for form fields
+        height: getDefaultHeight(type),  // Set appropriate height based on element type
         label: getDefaultLabel(type),
         name: `field_${elementIdCounter}`,
         required: false,
@@ -278,6 +278,34 @@ function getDefaultLabel(type) {
         drawing: 'Zeichnung'
     };
     return labels[type] || 'Element';
+}
+
+function getDefaultHeight(type) {
+    const heights = {
+        text: 42,        // Label + input field (needs more space)
+        dropdown: 42,    // Label + select field
+        radio: 60,       // Label + radio options (may need more for multiple options)
+        checkbox: 60,    // Label + checkbox options
+        staticText: 28,  // Just text content
+        image: 150,      // Image placeholder
+        submit: 36,      // Button with padding
+        drawing: 100     // Drawing area
+    };
+    return heights[type] || 28;
+}
+
+function getMinHeight(type) {
+    const minHeights = {
+        text: 38,        // Minimum for label + input
+        dropdown: 38,    // Minimum for label + select
+        radio: 50,       // Minimum for label + radio options
+        checkbox: 50,    // Minimum for label + checkbox options
+        staticText: 20,  // Minimum for text content
+        image: 30,       // Minimum for images
+        submit: 32,      // Minimum for buttons
+        drawing: 20      // Minimum for drawing elements
+    };
+    return minHeights[type] || 24;
 }
 
 function createFormElementDOM(element) {
@@ -1165,23 +1193,23 @@ document.addEventListener('mousemove', (e) => {
         switch(resizePosition) {
             case 'se':
                 selectedElement.width = Math.max(100, mouseX - selectedElement.x);
-                selectedElement.height = Math.max(24, mouseY - selectedElement.y);
+                selectedElement.height = Math.max(getMinHeight(selectedElement.type), mouseY - selectedElement.y);
                 break;
             case 'sw':
                 const newWidth = Math.max(100, selectedElement.x + selectedElement.width - mouseX);
                 selectedElement.x = mouseX;
                 selectedElement.width = newWidth;
-                selectedElement.height = Math.max(24, mouseY - selectedElement.y);
+                selectedElement.height = Math.max(getMinHeight(selectedElement.type), mouseY - selectedElement.y);
                 break;
             case 'ne':
                 selectedElement.width = Math.max(100, mouseX - selectedElement.x);
-                const newHeight = Math.max(24, selectedElement.y + selectedElement.height - mouseY);
+                const newHeight = Math.max(getMinHeight(selectedElement.type), selectedElement.y + selectedElement.height - mouseY);
                 selectedElement.y = mouseY;
                 selectedElement.height = newHeight;
                 break;
             case 'nw':
                 const newW = Math.max(100, selectedElement.x + selectedElement.width - mouseX);
-                const newH = Math.max(24, selectedElement.y + selectedElement.height - mouseY);
+                const newH = Math.max(getMinHeight(selectedElement.type), selectedElement.y + selectedElement.height - mouseY);
                 selectedElement.x = mouseX;
                 selectedElement.y = mouseY;
                 selectedElement.width = newW;
@@ -1830,7 +1858,16 @@ async function exportToPDF() {
             
             let y = 842 - (element.y + element.height) * 0.75 - labelSpace; // Flip Y coordinate and reserve label space
             const width = Math.max(element.width * 0.75 - (horizontalPadding * 2), 50); // Reduce width by padding, minimum 50 points
-            const height = element.height * 0.75;
+            
+            // Use smaller heights for form fields in PDF to avoid oversized appearance
+            let height;
+            if (element.type === 'text' || element.type === 'dropdown') {
+                height = 20; // Fixed smaller height for input fields in PDF
+            } else if (element.type === 'submit') {
+                height = 25; // Slightly larger for buttons
+            } else {
+                height = element.height * 0.75; // Use scaled height for other elements
+            }
             
             // Create unique field name to avoid conflicts with timestamp
             const timestamp = Date.now();
