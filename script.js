@@ -76,6 +76,15 @@ updatePageNavigation();
 showGeneralProperties();
 updateGroupsList();
 
+// Initialize dropdown menus
+initializeDropdowns();
+
+// Add event listeners for drawing elements
+document.getElementById('addRectangle').addEventListener('click', () => addDrawingElement('rectangle'));
+document.getElementById('addCircle').addEventListener('click', () => addDrawingElement('circle'));
+document.getElementById('addLine').addEventListener('click', () => addDrawingElement('line'));
+document.getElementById('addArrow').addEventListener('click', () => addDrawingElement('arrow'));
+
 // Notification System
 function showNotification(title, message, type = 'info', duration = 5000, showProgress = false) {
     const container = document.getElementById('notificationContainer');
@@ -259,7 +268,8 @@ function getDefaultLabel(type) {
         checkbox: 'Checkboxen',
         staticText: 'Text',
         image: 'Bild',
-        submit: 'Senden'
+        submit: 'Senden',
+        drawing: 'Zeichnung'
     };
     return labels[type] || 'Element';
 }
@@ -370,6 +380,10 @@ function updateFormElementContent(div, element) {
         case 'submit':
             const buttonFontSize = Math.min(defaultFontSize, 16); // Cap button font size at 16px
             contentDiv.innerHTML = `<button class="submit-button" style="font-family: ${defaultFontFamily} !important; font-size: ${buttonFontSize}px !important;">${element.label}</button>`;
+            break;
+        case 'drawing':
+            div.className = `form-element drawing-element ${element.drawingType}`;
+            contentDiv.innerHTML = getDrawingSVG(element);
             break;
     }
     
@@ -808,6 +822,23 @@ function showProperties(element) {
             <div class="property-group">
                 <label>Ziel (E-Mail/URL)</label>
                 <input type="text" value="${element.target || ''}" onchange="updateProperty('target', this.value)">
+            </div>
+        `;
+    }
+    
+    if (element.type === 'drawing') {
+        fieldPropertiesContent += `
+            <div class="property-group">
+                <label>Strichfarbe</label>
+                <input type="color" value="${element.strokeColor || '#000000'}" onchange="updateProperty('strokeColor', this.value)">
+            </div>
+            <div class="property-group">
+                <label>Füllfarbe</label>
+                <input type="color" value="${element.fillColor || '#ffffff'}" onchange="updateProperty('fillColor', this.value)">
+            </div>
+            <div class="property-group">
+                <label>Strichstärke</label>
+                <input type="number" min="1" max="20" value="${element.strokeWidth || 1}" onchange="updateProperty('strokeWidth', parseInt(this.value))">
             </div>
         `;
     }
@@ -1298,6 +1329,149 @@ function selectImageForElement() {
     if (selectedElement && selectedElement.type === 'image') {
         document.getElementById('imageFileInput').click();
     }
+}
+
+// Initialize dropdown menus functionality
+function initializeDropdowns() {
+    const dropdownTriggers = document.querySelectorAll('.dropdown-trigger');
+    
+    dropdownTriggers.forEach(trigger => {
+        trigger.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Close all other dropdowns
+            document.querySelectorAll('.dropdown-content').forEach(content => {
+                if (content !== trigger.nextElementSibling) {
+                    content.classList.remove('show');
+                }
+            });
+            
+            // Toggle current dropdown
+            const dropdown = trigger.nextElementSibling;
+            dropdown.classList.toggle('show');
+        });
+    });
+    
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.dropdown-menu')) {
+            document.querySelectorAll('.dropdown-content').forEach(content => {
+                content.classList.remove('show');
+            });
+        }
+    });
+}
+
+// Add drawing elements (shapes)
+function addDrawingElement(type) {
+    const element = {
+        id: `element_${elementIdCounter++}`,
+        type: 'drawing',
+        drawingType: type,
+        x: 50,
+        y: 50,
+        width: type === 'line' ? 150 : 100,
+        height: type === 'line' ? 2 : 100,
+        label: getDrawingLabel(type),
+        name: `${type}_${elementIdCounter}`,
+        strokeColor: '#000000',
+        strokeWidth: type === 'line' ? 2 : 1,
+        fillColor: type === 'line' ? 'transparent' : 'transparent',
+        pageId: currentPage
+    };
+    
+    // Find free position for new element
+    const position = findFreePosition(element.width, element.height);
+    element.x = position.x;
+    element.y = position.y;
+    
+    // Save state for undo
+    saveState();
+    
+    formElements.push(element);
+    
+    // Add to current page
+    const pageData = pages.find(p => p.id === currentPage);
+    if (pageData) {
+        pageData.elements.push(element);
+    }
+    
+    createFormElementDOM(element);
+    updateElementOrderList();
+    
+    // Close dropdown after selection
+    document.querySelectorAll('.dropdown-content').forEach(content => {
+        content.classList.remove('show');
+    });
+    
+    return element;
+}
+
+function getDrawingLabel(type) {
+    const labels = {
+        rectangle: 'Rechteck',
+        circle: 'Kreis', 
+        line: 'Linie',
+        arrow: 'Pfeil'
+    };
+    return labels[type] || 'Zeichnung';
+}
+
+// Generate SVG for drawing elements
+function getDrawingSVG(element) {
+    const width = element.width;
+    const height = element.height;
+    const strokeColor = element.strokeColor || '#000000';
+    const strokeWidth = element.strokeWidth || 1;
+    const fillColor = element.fillColor || 'transparent';
+    
+    let svgContent = '';
+    
+    switch (element.drawingType) {
+        case 'rectangle':
+            svgContent = `<rect x="2" y="2" width="${width-4}" height="${height-4}" 
+                         stroke="${strokeColor}" stroke-width="${strokeWidth}" fill="${fillColor}" />`;
+            break;
+        case 'circle':
+            const radius = Math.min(width, height) / 2 - 2;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            svgContent = `<circle cx="${centerX}" cy="${centerY}" r="${radius}" 
+                         stroke="${strokeColor}" stroke-width="${strokeWidth}" fill="${fillColor}" />`;
+            break;
+        case 'line':
+            svgContent = `<line x1="0" y1="${height/2}" x2="${width}" y2="${height/2}" 
+                         stroke="${strokeColor}" stroke-width="${strokeWidth}" />`;
+            break;
+        case 'arrow':
+            const arrowHeight = Math.min(height, 20);
+            const arrowWidth = Math.min(width * 0.2, 15);
+            svgContent = `
+                <line x1="0" y1="${height/2}" x2="${width-arrowWidth}" y2="${height/2}" 
+                      stroke="${strokeColor}" stroke-width="${strokeWidth}" />
+                <polygon points="${width-arrowWidth},${height/2-arrowHeight/2} ${width},${height/2} ${width-arrowWidth},${height/2+arrowHeight/2}" 
+                         fill="${strokeColor}" stroke="${strokeColor}" stroke-width="1" />
+            `;
+            break;
+        default:
+            svgContent = `<rect x="2" y="2" width="${width-4}" height="${height-4}" 
+                         stroke="${strokeColor}" stroke-width="1" fill="none" stroke-dasharray="5,5" />`;
+    }
+    
+    return `<svg width="100%" height="100%" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+                ${svgContent}
+            </svg>`;
+}
+
+// Helper function to convert hex color to RGB values
+function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : { r: 0, g: 0, b: 0 };
 }
 
 // Function to compress image for PDF export
@@ -1927,6 +2101,85 @@ async function exportToPDF() {
                     font: buttonFont,
                     color: rgb(0, 0, 0)
                 });
+                break;
+                
+            case 'drawing':
+                // Export drawing elements to PDF
+                try {
+                    const strokeColor = element.strokeColor || '#000000';
+                    const fillColor = element.fillColor || 'transparent';
+                    const strokeWidth = element.strokeWidth || 1;
+                    
+                    // Convert hex colors to RGB
+                    const strokeRGB = hexToRgb(strokeColor);
+                    const fillRGB = fillColor !== 'transparent' ? hexToRgb(fillColor) : null;
+                    
+                    switch (element.drawingType) {
+                        case 'rectangle':
+                            pdfPage.drawRectangle({
+                                x: x,
+                                y: y,
+                                width: width,
+                                height: height,
+                                borderColor: rgb(strokeRGB.r/255, strokeRGB.g/255, strokeRGB.b/255),
+                                borderWidth: strokeWidth,
+                                color: fillRGB ? rgb(fillRGB.r/255, fillRGB.g/255, fillRGB.b/255) : undefined
+                            });
+                            break;
+                        case 'circle':
+                            // pdf-lib doesn't have circle, use ellipse
+                            const radiusX = width / 2;
+                            const radiusY = height / 2;
+                            pdfPage.drawEllipse({
+                                x: x + radiusX,
+                                y: y + radiusY,
+                                xScale: radiusX,
+                                yScale: radiusY,
+                                borderColor: rgb(strokeRGB.r/255, strokeRGB.g/255, strokeRGB.b/255),
+                                borderWidth: strokeWidth,
+                                color: fillRGB ? rgb(fillRGB.r/255, fillRGB.g/255, fillRGB.b/255) : undefined
+                            });
+                            break;
+                        case 'line':
+                            pdfPage.drawLine({
+                                start: { x: x, y: y + height/2 },
+                                end: { x: x + width, y: y + height/2 },
+                                thickness: strokeWidth,
+                                color: rgb(strokeRGB.r/255, strokeRGB.g/255, strokeRGB.b/255)
+                            });
+                            break;
+                        case 'arrow':
+                            // Draw line
+                            pdfPage.drawLine({
+                                start: { x: x, y: y + height/2 },
+                                end: { x: x + width - 15, y: y + height/2 },
+                                thickness: strokeWidth,
+                                color: rgb(strokeRGB.r/255, strokeRGB.g/255, strokeRGB.b/255)
+                            });
+                            // Draw arrow head (triangle)
+                            const arrowPoints = [
+                                { x: x + width - 15, y: y + height/2 - 5 },
+                                { x: x + width, y: y + height/2 },
+                                { x: x + width - 15, y: y + height/2 + 5 }
+                            ];
+                            // Simple triangle approximation with lines
+                            pdfPage.drawLine({
+                                start: arrowPoints[0],
+                                end: arrowPoints[1],
+                                thickness: strokeWidth,
+                                color: rgb(strokeRGB.r/255, strokeRGB.g/255, strokeRGB.b/255)
+                            });
+                            pdfPage.drawLine({
+                                start: arrowPoints[1],
+                                end: arrowPoints[2],
+                                thickness: strokeWidth,
+                                color: rgb(strokeRGB.r/255, strokeRGB.g/255, strokeRGB.b/255)
+                            });
+                            break;
+                    }
+                } catch (error) {
+                    console.error('Error drawing shape in PDF:', error);
+                }
                 break;
             }
         }

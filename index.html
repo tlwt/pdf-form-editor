@@ -26,13 +26,32 @@
                 <button id="aboutBtn" class="about-btn">ℹ️ Über</button>
             </div>
             <div class="toolbar-group">
-                <button id="addTextField" class="tool-btn">📝 Textfeld</button>
-                <button id="addDropdown" class="tool-btn">📋 Dropdown</button>
-                <button id="addRadio" class="tool-btn">⭕ Radio</button>
-                <button id="addCheckbox" class="tool-btn">☑️ Checkbox</button>
-                <button id="addText" class="tool-btn">🔤 Text</button>
-                <button id="addImage" class="tool-btn">🖼️ Bild</button>
-                <button id="addSubmit" class="tool-btn">📤 Senden</button>
+                <div class="dropdown-menu">
+                    <button class="tool-btn dropdown-trigger" id="fieldsMenu">📝 Felder ▼</button>
+                    <div class="dropdown-content" id="fieldsDropdown">
+                        <button id="addTextField" class="dropdown-item">📝 Textfeld</button>
+                        <button id="addDropdown" class="dropdown-item">📋 Dropdown</button>
+                        <button id="addRadio" class="dropdown-item">⭕ Radio</button>
+                        <button id="addCheckbox" class="dropdown-item">☑️ Checkbox</button>
+                        <button id="addSubmit" class="dropdown-item">📤 Senden</button>
+                    </div>
+                </div>
+                <div class="dropdown-menu">
+                    <button class="tool-btn dropdown-trigger" id="contentMenu">📄 Inhalte ▼</button>
+                    <div class="dropdown-content" id="contentDropdown">
+                        <button id="addText" class="dropdown-item">🔤 Text</button>
+                        <button id="addImage" class="dropdown-item">🖼️ Bild</button>
+                    </div>
+                </div>
+                <div class="dropdown-menu">
+                    <button class="tool-btn dropdown-trigger" id="drawingMenu">✏️ Zeichnen ▼</button>
+                    <div class="dropdown-content" id="drawingDropdown">
+                        <button id="addRectangle" class="dropdown-item">⬜ Rechteck</button>
+                        <button id="addCircle" class="dropdown-item">⭕ Kreis</button>
+                        <button id="addLine" class="dropdown-item">📏 Linie</button>
+                        <button id="addArrow" class="dropdown-item">➡️ Pfeil</button>
+                    </div>
+                </div>
             </div>
             <div class="toolbar-group">
                 <button id="toggleGrid" class="tool-btn">⚏ Gitter</button>
