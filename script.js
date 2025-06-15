@@ -7,6 +7,8 @@ let formElements = [];
 let elementIdCounter = 0;
 let gridVisible = true;
 let formName = 'Neues Formular';
+let defaultFontFamily = 'Arial';
+let defaultFontSize = 10; // Reduced default font size for better PDF proportions
 let undoStack = [];
 let redoStack = [];
 const maxUndoSteps = 50;
@@ -51,6 +53,76 @@ document.addEventListener('keydown', handleKeyDown);
 // Initialize button states
 updateUndoRedoButtons();
 updatePageNavigation();
+
+// Auto-load page properties on startup
+showGeneralProperties();
+
+// Notification System
+function showNotification(title, message, type = 'info', duration = 5000, showProgress = false) {
+    const container = document.getElementById('notificationContainer');
+    const id = 'notification_' + Date.now();
+    
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.id = id;
+    
+    const icons = {
+        success: '✅',
+        error: '❌', 
+        warning: '⚠️',
+        info: 'ℹ️'
+    };
+    
+    notification.innerHTML = `
+        <div class="notification-header">
+            <div class="notification-title">
+                <span>${icons[type] || icons.info}</span>
+                ${title}
+            </div>
+            <button class="notification-close" onclick="hideNotification('${id}')">&times;</button>
+        </div>
+        <div class="notification-message">${message}</div>
+        ${showProgress ? '<div class="notification-progress"><div class="notification-progress-bar" style="width: 0%"></div></div>' : ''}
+    `;
+    
+    container.appendChild(notification);
+    
+    // Trigger animation
+    setTimeout(() => {
+        notification.classList.add('show');
+    }, 10);
+    
+    // Auto-hide if duration is set
+    if (duration > 0) {
+        setTimeout(() => {
+            hideNotification(id);
+        }, duration);
+    }
+    
+    return id;
+}
+
+function hideNotification(id) {
+    const notification = document.getElementById(id);
+    if (notification) {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }
+}
+
+function updateNotificationProgress(id, progress) {
+    const notification = document.getElementById(id);
+    if (notification) {
+        const progressBar = notification.querySelector('.notification-progress-bar');
+        if (progressBar) {
+            progressBar.style.width = Math.min(100, Math.max(0, progress)) + '%';
+        }
+    }
+}
 
 function addFormElement(type) {
     const element = {
@@ -212,42 +284,47 @@ function updateFormElementContent(div, element) {
     
     switch(element.type) {
         case 'text':
+            const inputFontSize = Math.min(defaultFontSize, 14); // Cap input font size at 14px
             contentDiv.innerHTML = `
-                <label>${element.label}</label>
-                <input type="text" placeholder="${element.label}" disabled>
+                <label style="font-family: ${defaultFontFamily} !important; font-size: ${Math.min(defaultFontSize, 12)}px !important;">${element.label}</label>
+                <input type="text" placeholder="${element.label}" style="font-family: ${defaultFontFamily} !important; font-size: ${inputFontSize}px !important;" disabled>
             `;
             break;
         case 'dropdown':
+            const selectFontSize = Math.min(defaultFontSize, 14); // Cap select font size at 14px
             contentDiv.innerHTML = `
-                <label>${element.label}</label>
-                <select disabled>
+                <label style="font-family: ${defaultFontFamily} !important; font-size: ${Math.min(defaultFontSize, 12)}px !important;">${element.label}</label>
+                <select style="font-family: ${defaultFontFamily} !important; font-size: ${selectFontSize}px !important;" disabled>
                     ${element.options.map(opt => `<option>${opt}</option>`).join('')}
                 </select>
             `;
             break;
         case 'radio':
+            const radioFontSize = Math.min(defaultFontSize, 12); // Cap radio font size at 12px
             contentDiv.innerHTML = `
-                <label>${element.label}</label>
+                <label style="font-family: ${defaultFontFamily} !important; font-size: ${Math.min(defaultFontSize, 12)}px !important;">${element.label}</label>
                 <div class="radio-group">
                     ${element.options.map((opt, i) => `
-                        <label><input type="radio" name="${element.name}" disabled> ${opt}</label>
+                        <label style="font-family: ${defaultFontFamily} !important; font-size: ${radioFontSize}px !important;"><input type="radio" name="${element.name}" disabled> ${opt}</label>
                     `).join('')}
                 </div>
             `;
             break;
         case 'checkbox':
+            const checkboxFontSize = Math.min(defaultFontSize, 12); // Cap checkbox font size at 12px
             contentDiv.innerHTML = `
-                <label>${element.label}</label>
+                <label style="font-family: ${defaultFontFamily} !important; font-size: ${Math.min(defaultFontSize, 12)}px !important;">${element.label}</label>
                 <div class="checkbox-group">
                     ${element.options.map((opt, i) => `
-                        <label><input type="checkbox" disabled> ${opt}</label>
+                        <label style="font-family: ${defaultFontFamily} !important; font-size: ${checkboxFontSize}px !important;"><input type="checkbox" disabled> ${opt}</label>
                     `).join('')}
                 </div>
             `;
             break;
         case 'staticText':
             div.className = 'form-element text-element';
-            contentDiv.innerHTML = `<p>${element.value || 'Doppelklick zum Bearbeiten'}</p>`;
+            const textContent = element.value || 'Doppelklick zum Bearbeiten';
+            contentDiv.innerHTML = `<div class="wysiwyg-text" style="font-family: ${element.fontFamily || defaultFontFamily}; font-size: ${element.fontSize || defaultFontSize}px;">${textContent}</div>`;
             contentDiv.addEventListener('dblclick', () => editTextElement(element));
             break;
         case 'image':
@@ -259,7 +336,8 @@ function updateFormElementContent(div, element) {
             }
             break;
         case 'submit':
-            contentDiv.innerHTML = `<button class="submit-button">${element.label}</button>`;
+            const buttonFontSize = Math.min(defaultFontSize, 16); // Cap button font size at 16px
+            contentDiv.innerHTML = `<button class="submit-button" style="font-family: ${defaultFontFamily} !important; font-size: ${buttonFontSize}px !important;">${element.label}</button>`;
             break;
     }
     
@@ -315,6 +393,27 @@ function showProperties(element) {
             <div class="property-group">
                 <label>Text</label>
                 <textarea rows="4" onchange="updateProperty('value', this.value)">${element.value}</textarea>
+            </div>
+            <div class="property-group">
+                <label>Schriftart</label>
+                <select onchange="updateProperty('fontFamily', this.value)">
+                    <option value="Arial" ${(element.fontFamily || defaultFontFamily) === 'Arial' ? 'selected' : ''}>Arial</option>
+                    <option value="Times" ${(element.fontFamily || defaultFontFamily) === 'Times' ? 'selected' : ''}>Times New Roman</option>
+                    <option value="Helvetica" ${(element.fontFamily || defaultFontFamily) === 'Helvetica' ? 'selected' : ''}>Helvetica</option>
+                    <option value="Courier" ${(element.fontFamily || defaultFontFamily) === 'Courier' ? 'selected' : ''}>Courier</option>
+                </select>
+            </div>
+            <div class="property-group">
+                <label>Schriftgröße</label>
+                <input type="number" min="8" max="72" value="${element.fontSize || defaultFontSize}" onchange="updateProperty('fontSize', this.value)">
+            </div>
+            <div class="property-group">
+                <label>Formatierung</label>
+                <div style="display: flex; gap: 5px; margin-top: 5px;">
+                    <button type="button" onclick="formatText('bold')" style="padding: 5px 8px; border: 1px solid #ddd; background: white; font-weight: bold;">B</button>
+                    <button type="button" onclick="formatText('italic')" style="padding: 5px 8px; border: 1px solid #ddd; background: white; font-style: italic;">I</button>
+                    <button type="button" onclick="formatText('underline')" style="padding: 5px 8px; border: 1px solid #ddd; background: white; text-decoration: underline;">U</button>
+                </div>
             </div>
         `;
     }
@@ -402,6 +501,20 @@ function updateProperty(property, value) {
     
     if (property === 'x' || property === 'y' || property === 'width' || property === 'height') {
         div.style[property === 'x' ? 'left' : property === 'y' ? 'top' : property] = value + 'px';
+    } else if (property === 'fontFamily' || property === 'fontSize') {
+        // Handle font properties for text elements
+        if (selectedElement.type === 'staticText') {
+            const textDiv = div.querySelector('.wysiwyg-text');
+            if (textDiv) {
+                if (property === 'fontFamily') {
+                    textDiv.style.fontFamily = value;
+                } else if (property === 'fontSize') {
+                    textDiv.style.fontSize = value + 'px';
+                }
+                // Save the current content to preserve formatting
+                selectedElement.value = textDiv.innerHTML;
+            }
+        }
     } else {
         updateFormElementContent(div, selectedElement);
     }
@@ -561,11 +674,54 @@ document.addEventListener('mouseup', () => {
 });
 
 function editTextElement(element) {
-    const text = prompt('Text eingeben:', element.value || '');
-    if (text !== null) {
-        element.value = text;
-        const div = document.getElementById(element.id);
-        updateFormElementContent(div, element);
+    const div = document.getElementById(element.id);
+    const textDiv = div.querySelector('.wysiwyg-text');
+    
+    if (textDiv) {
+        // Save original content
+        const originalContent = textDiv.innerHTML;
+        
+        // Make editable
+        textDiv.contentEditable = true;
+        textDiv.style.border = '2px solid #3498db';
+        textDiv.style.outline = 'none';
+        textDiv.style.padding = '5px';
+        textDiv.focus();
+        
+        // Select all text if it's the placeholder
+        if (textDiv.textContent === 'Doppelklick zum Bearbeiten') {
+            document.execCommand('selectAll');
+        }
+        
+        // Handle blur (when user clicks outside)
+        const handleBlur = () => {
+            textDiv.contentEditable = false;
+            textDiv.style.border = 'none';
+            textDiv.style.padding = '0';
+            
+            // Save content
+            element.value = textDiv.innerHTML;
+            if (!element.value.trim()) {
+                textDiv.innerHTML = 'Doppelklick zum Bearbeiten';
+            }
+            
+            textDiv.removeEventListener('blur', handleBlur);
+            textDiv.removeEventListener('keydown', handleKeydown);
+        };
+        
+        // Handle Enter and Escape keys
+        const handleKeydown = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                textDiv.blur();
+            } else if (e.key === 'Escape') {
+                textDiv.innerHTML = originalContent;
+                textDiv.blur();
+            }
+        };
+        
+        textDiv.addEventListener('blur', handleBlur);
+        textDiv.addEventListener('keydown', handleKeydown);
     }
 }
 
@@ -614,6 +770,19 @@ function showGeneralProperties() {
                     <label>Seitengröße</label>
                     <input type="text" value="A4 (210 × 297 mm)" disabled>
                 </div>
+                <div class="property-group">
+                    <label>Standard-Schriftart</label>
+                    <select onchange="updateDefaultFont(this.value)">
+                        <option value="Arial" ${defaultFontFamily === 'Arial' ? 'selected' : ''}>Arial</option>
+                        <option value="Times" ${defaultFontFamily === 'Times' ? 'selected' : ''}>Times New Roman</option>
+                        <option value="Helvetica" ${defaultFontFamily === 'Helvetica' ? 'selected' : ''}>Helvetica</option>
+                        <option value="Courier" ${defaultFontFamily === 'Courier' ? 'selected' : ''}>Courier</option>
+                    </select>
+                </div>
+                <div class="property-group">
+                    <label>Standard-Schriftgröße</label>
+                    <input type="number" min="8" max="72" value="${defaultFontSize}" onchange="updateDefaultFontSize(this.value)">
+                </div>
             </div>
         </div>
         
@@ -641,6 +810,66 @@ function showGeneralProperties() {
 
 function updateFormName(name) {
     formName = name || 'Neues Formular';
+}
+
+function updateDefaultFont(fontFamily) {
+    defaultFontFamily = fontFamily || 'Arial';
+    
+    // Update all existing elements to use new default font
+    formElements.forEach(element => {
+        const div = document.getElementById(element.id);
+        if (div) {
+            updateFormElementContent(div, element);
+        }
+    });
+}
+
+function updateDefaultFontSize(fontSize) {
+    defaultFontSize = parseInt(fontSize) || 12;
+    
+    // Update all existing elements to use new default font size
+    formElements.forEach(element => {
+        const div = document.getElementById(element.id);
+        if (div) {
+            updateFormElementContent(div, element);
+        }
+    });
+}
+
+function formatText(command) {
+    if (!selectedElement || selectedElement.type !== 'staticText') {
+        return;
+    }
+    
+    const div = document.getElementById(selectedElement.id);
+    const textDiv = div.querySelector('.wysiwyg-text');
+    
+    if (textDiv && textDiv.contentEditable === 'true') {
+        // If currently editing, apply formatting to selection
+        document.execCommand(command, false, null);
+    } else {
+        // If not editing, apply formatting to entire text
+        const currentValue = selectedElement.value || '';
+        let newValue = '';
+        
+        switch(command) {
+            case 'bold':
+                newValue = `<b>${currentValue}</b>`;
+                break;
+            case 'italic':
+                newValue = `<i>${currentValue}</i>`;
+                break;
+            case 'underline':
+                newValue = `<u>${currentValue}</u>`;
+                break;
+            default:
+                return;
+        }
+        
+        selectedElement.value = newValue;
+        updateFormElementContent(div, selectedElement);
+        showElementProperties(selectedElement);
+    }
 }
 
 function updatePageHeader(header) {
@@ -673,16 +902,64 @@ page.addEventListener('click', (e) => {
 });
 
 async function exportToPDF() {
-    const { PDFDocument, rgb } = PDFLib;
+    const notificationId = showNotification('PDF Export', 'PDF wird erstellt...', 'info', 0, true);
+    updateNotificationProgress(notificationId, 10);
+    
+    try {
+        const { PDFDocument, rgb, StandardFonts } = PDFLib;
     
     const pdfDoc = await PDFDocument.create();
+    
+    // Helper function to get PDF font from font family name
+    const getPDFFont = async (fontFamily) => {
+        const normalizedFont = (fontFamily || defaultFontFamily).toLowerCase();
+        switch (normalizedFont) {
+            case 'times':
+            case 'times new roman':
+                return await pdfDoc.embedFont(StandardFonts.TimesRoman);
+            case 'helvetica':
+                return await pdfDoc.embedFont(StandardFonts.Helvetica);
+            case 'courier':
+            case 'courier new':
+                return await pdfDoc.embedFont(StandardFonts.Courier);
+            case 'arial':
+            default:
+                return await pdfDoc.embedFont(StandardFonts.Helvetica); // Arial fallback to Helvetica
+        }
+    };
+
+    // Helper function to strip HTML tags and convert to plain text for PDF export
+    const stripHtmlForPDF = (html) => {
+        if (!html) return '';
+        
+        // Create a temporary div to parse HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        
+        // Get text content, which automatically strips HTML tags
+        let text = tempDiv.textContent || tempDiv.innerText || '';
+        
+        return text;
+    };
     
     // Add form fields
     const form = pdfDoc.getForm();
     
+    // Embed default font for form fields
+    let formDefaultFont;
+    try {
+        formDefaultFont = await getPDFFont(defaultFontFamily);
+    } catch (e) {
+        // Fallback to standard font
+        formDefaultFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    }
+    
+    updateNotificationProgress(notificationId, 30);
+    
     // Create pages and add elements
     for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
         const pdfPage = pdfDoc.addPage([595, 842]); // A4 size
+        
         
         // Get page data
         const pageData = pages.find(p => p.id === pageNum);
@@ -713,10 +990,23 @@ async function exportToPDF() {
         const bottomMargin = pageData?.footer ? 70 : 30; // If footer exists, end higher
         
         for (const element of pageElements) {
-            const x = element.x * 0.75; // Convert pixels to PDF points
-            let y = 842 - (element.y + element.height) * 0.75; // Flip Y coordinate
-            const width = element.width * 0.75;
+            // Add horizontal padding to create space between fields
+            const horizontalPadding = 5; // 5 points padding on each side
+            const x = element.x * 0.75 + horizontalPadding; // Convert pixels to PDF points and add padding
+            
+            // Reserve space for labels by adjusting Y coordinate
+            let labelSpace = 0;
+            if ((element.type === 'text' || element.type === 'dropdown') && element.label) {
+                labelSpace = 20; // Reserve 20 points for label space
+            }
+            
+            let y = 842 - (element.y + element.height) * 0.75 - labelSpace; // Flip Y coordinate and reserve label space
+            const width = Math.max(element.width * 0.75 - (horizontalPadding * 2), 50); // Reduce width by padding, minimum 50 points
             const height = element.height * 0.75;
+            
+            // Create unique field name to avoid conflicts with timestamp
+            const timestamp = Date.now();
+            const fieldName = `${element.name}_p${pageNum}_${element.id}_${timestamp}`;
             
             // Check if element would be outside safe area
             if (y + height > topMargin) {
@@ -733,64 +1023,129 @@ async function exportToPDF() {
             case 'text':
                 // Draw label above the field
                 if (element.label) {
-                    const labelY = y + height + 5;
+                    const labelY = y + height + 5; // Place label above field with minimal spacing
                     // Check if label would overlap with header
                     if (labelY <= topMargin) {
+                        const labelFont = await getPDFFont(defaultFontFamily);
                         pdfPage.drawText(element.label, {
                             x: x,
                             y: labelY,
-                            size: 10,
+                            size: Math.min(defaultFontSize * 0.7, 9), // Reduce label font size significantly
+                            font: labelFont,
                             color: rgb(0, 0, 0)
                         });
                     }
                 }
-                const textField = form.createTextField(`${element.name}_page${pageNum}`);
-                textField.setText(element.value || '');
+                const textField = form.createTextField(fieldName);
+                
+                // Add to page first
                 textField.addToPage(pdfPage, { x, y, width, height });
+                
+                // Then set properties and appearance
+                const fieldFontSize = Math.min(defaultFontSize * 0.8, 10);
+                textField.setText(element.value || '');
+                
+                try {
+                    // Set font size first
+                    textField.setFontSize(fieldFontSize);
+                    
+                    // Force update appearances with the font
+                    textField.updateAppearances(formDefaultFont);
+                    
+                    // If the field still has issues, try setting a default value
+                    if (!element.value) {
+                        textField.setText(' '); // Set a space to force appearance generation
+                        textField.setText(''); // Then clear it
+                    }
+                } catch (e) {
+                    console.warn('Text field appearance warning:', e);
+                }
                 break;
                 
             case 'dropdown':
                 // Draw label above the field
                 if (element.label) {
-                    const labelY = y + height + 5;
+                    const labelY = y + height + 5; // Place label above field with minimal spacing
                     // Check if label would overlap with header
                     if (labelY <= topMargin) {
+                        const labelFont = await getPDFFont(defaultFontFamily);
                         pdfPage.drawText(element.label, {
                             x: x,
                             y: labelY,
-                            size: 10,
+                            size: Math.min(defaultFontSize * 0.7, 9), // Reduce label font size significantly
+                            font: labelFont,
                             color: rgb(0, 0, 0)
                         });
                     }
                 }
-                const dropdown = form.createDropdown(`${element.name}_page${pageNum}`);
+                const dropdown = form.createDropdown(fieldName);
                 dropdown.addOptions(element.options);
+                
+                // Add to page first
                 dropdown.addToPage(pdfPage, { x, y, width, height });
+                
+                // Then set properties and appearance
+                const dropdownFontSize = Math.min(defaultFontSize * 0.8, 10);
+                
+                try {
+                    // Set font size first
+                    dropdown.setFontSize(dropdownFontSize);
+                    
+                    // Force update appearances with the font
+                    dropdown.updateAppearances(formDefaultFont);
+                    
+                    // Select first option to force appearance generation
+                    if (element.options && element.options.length > 0) {
+                        dropdown.select(element.options[0]);
+                    }
+                } catch (e) {
+                    console.warn('Dropdown appearance warning:', e);
+                }
                 break;
                 
             case 'checkbox':
                 // Draw label above the checkbox group
                 if (element.label) {
+                    const labelFont = await getPDFFont(defaultFontFamily);
                     pdfPage.drawText(element.label, {
                         x: x,
                         y: y + height + 5,
-                        size: 10,
+                        size: Math.min(defaultFontSize * 0.7, 9), // Reduce label font size significantly
+                        font: labelFont,
                         color: rgb(0, 0, 0)
                     });
                 }
-                element.options.forEach((opt, i) => {
-                    const checkbox = form.createCheckBox(`${element.name}_page${pageNum}_${i}`);
+                element.options.forEach(async (opt, i) => {
+                    const checkbox = form.createCheckBox(`${fieldName}_${i}`);
+                    
+                    // Set appearance before adding to page
+                    try {
+                        const checkboxFontSize = Math.min(defaultFontSize * 0.7, 8);
+                        checkbox.setFontSize(checkboxFontSize);
+                        checkbox.updateAppearances(formDefaultFont);
+                        checkbox.defaultUpdateAppearances(formDefaultFont);
+                    } catch (e) {
+                        // Fallback for checkbox appearance
+                        try {
+                            checkbox.setFontSize(8);
+                        } catch (e2) {
+                            // Font size might not be supported
+                        }
+                    }
+                    
                     checkbox.addToPage(pdfPage, { 
                         x: x, 
-                        y: y - (i * 25), 
-                        width: 20, 
-                        height: 20 
+                        y: y - (i * 20), // Reduce spacing between checkboxes
+                        width: 15, // Smaller checkbox size
+                        height: 15 
                     });
                     // Draw option label next to checkbox
+                    const optionFont = await getPDFFont(defaultFontFamily);
                     pdfPage.drawText(opt, {
-                        x: x + 25,
-                        y: y - (i * 25) + 6,
-                        size: 9,
+                        x: x + 20, // Closer to checkbox
+                        y: y - (i * 20) + 4, // Adjust for new spacing
+                        size: Math.min(Math.max(7, defaultFontSize * 0.6), 8), // Much smaller option labels
+                        font: optionFont,
                         color: rgb(0, 0, 0)
                     });
                 });
@@ -799,38 +1154,84 @@ async function exportToPDF() {
             case 'radio':
                 // Draw label above the radio group
                 if (element.label) {
+                    const labelFont = await getPDFFont(defaultFontFamily);
                     pdfPage.drawText(element.label, {
                         x: x,
                         y: y + height + 5,
-                        size: 10,
+                        size: Math.min(defaultFontSize * 0.7, 9), // Reduce label font size significantly
+                        font: labelFont,
                         color: rgb(0, 0, 0)
                     });
                 }
-                const radioGroup = form.createRadioGroup(`${element.name}_page${pageNum}`);
-                element.options.forEach((opt, i) => {
+                const radioGroup = form.createRadioGroup(fieldName);
+                
+                // Set appearance for radio group
+                try {
+                    const radioFontSize = Math.min(defaultFontSize * 0.7, 8);
+                    radioGroup.setFontSize(radioFontSize);
+                    radioGroup.updateAppearances(formDefaultFont);
+                    radioGroup.defaultUpdateAppearances(formDefaultFont);
+                } catch (e) {
+                    // Fallback for radio group appearance
+                    try {
+                        radioGroup.setFontSize(8);
+                    } catch (e2) {
+                        // Font size might not be supported
+                    }
+                }
+                
+                element.options.forEach(async (opt, i) => {
                     radioGroup.addOptionToPage(opt, pdfPage, { 
                         x: x, 
-                        y: y - (i * 25), 
-                        width: 20, 
-                        height: 20 
+                        y: y - (i * 20), // Reduce spacing between radio buttons
+                        width: 15, // Smaller radio button size
+                        height: 15 
                     });
                     // Draw option label next to radio button
+                    const optionFont = await getPDFFont(defaultFontFamily);
                     pdfPage.drawText(opt, {
-                        x: x + 25,
-                        y: y - (i * 25) + 6,
-                        size: 9,
+                        x: x + 20, // Closer to radio button
+                        y: y - (i * 20) + 4, // Adjust for new spacing
+                        size: Math.min(Math.max(7, defaultFontSize * 0.6), 8), // Much smaller option labels
+                        font: optionFont,
                         color: rgb(0, 0, 0)
                     });
                 });
                 break;
                 
             case 'staticText':
-                pdfPage.drawText(element.value || '', {
-                    x: x,
-                    y: y + height - 15,
-                    size: 12,
-                    color: rgb(0, 0, 0)
-                });
+                try {
+                    const font = await getPDFFont(element.fontFamily);
+                    const textContent = stripHtmlForPDF(element.value || '');
+                    const fontSize = Math.min(parseInt(element.fontSize) || defaultFontSize, 14); // Cap static text at 14pt
+                    
+                    // Handle multi-line text by splitting on newlines
+                    const lines = textContent.split('\n');
+                    const lineHeight = fontSize * 1.2;
+                    
+                    lines.forEach((line, index) => {
+                        if (line.trim()) { // Only draw non-empty lines
+                            pdfPage.drawText(line, {
+                                x: x,
+                                y: y + height - 15 - (index * lineHeight),
+                                size: fontSize,
+                                font: font,
+                                color: rgb(0, 0, 0)
+                            });
+                        }
+                    });
+                } catch (error) {
+                    console.error('Error drawing static text:', error);
+                    // Fallback: draw simple text without formatting
+                    const fallbackFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                    pdfPage.drawText(stripHtmlForPDF(element.value || ''), {
+                        x: x,
+                        y: y + height - 15,
+                        size: defaultFontSize,
+                        font: fallbackFont,
+                        color: rgb(0, 0, 0)
+                    });
+                }
                 break;
                 
             case 'image':
@@ -858,16 +1259,20 @@ async function exportToPDF() {
                     borderWidth: 1,
                     color: rgb(0.9, 0.9, 0.9)
                 });
+                const buttonFont = await getPDFFont(defaultFontFamily);
                 pdfPage.drawText(element.label || 'Senden', {
                     x: x + width / 2 - (element.label?.length || 6) * 3,
                     y: y + height / 2 - 6,
-                    size: 12,
+                    size: Math.min(defaultFontSize * 0.8, 11), // Reduce button font size
+                    font: buttonFont,
                     color: rgb(0, 0, 0)
                 });
                 break;
             }
         }
     }
+    
+    updateNotificationProgress(notificationId, 70);
     
     // Embed form configuration as PDF metadata
     const config = {
@@ -884,6 +1289,8 @@ async function exportToPDF() {
     pdfDoc.setSubject('PDF Formular Ersteller Configuration');
     pdfDoc.setKeywords(['form-creator-config', JSON.stringify(config)]);
     
+    updateNotificationProgress(notificationId, 90);
+    
     const pdfBytes = await pdfDoc.save();
     
     // Generate filename with current date
@@ -893,17 +1300,44 @@ async function exportToPDF() {
     const safeFormName = formName.replace(/[^a-z0-9äöüß\s]/gi, '').replace(/\s+/g, '_');
     const filename = `${safeFormName}_${dateStr}_${timeStr}.pdf`;
     
-    // Download the PDF
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    // Download the PDF with enhanced error handling
+    try {
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        
+        // Add to DOM temporarily to ensure proper event handling
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        // Clean up URL object after a delay
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+        }, 100);
+    } catch (downloadError) {
+        console.error('PDF download error:', downloadError);
+        hideNotification(notificationId);
+        showNotification('Download fehlgeschlagen', 'PDF konnte nicht heruntergeladen werden. Versuchen Sie es erneut.', 'error');
+        return;
+    }
+    
+    updateNotificationProgress(notificationId, 100);
+    setTimeout(() => {
+        hideNotification(notificationId);
+        showNotification('Export erfolgreich', `PDF wurde als "${filename}" heruntergeladen`, 'success');
+    }, 500);
     
     // Clear unsaved changes warning after successful export
     clearUnsavedChangesWarning();
+    
+    } catch (error) {
+        console.error('PDF export error:', error);
+        hideNotification(notificationId);
+        showNotification('Export fehlgeschlagen', 'Fehler beim Erstellen der PDF: ' + error.message, 'error');
+    }
 }
 
 // Page Management Functions
@@ -1039,7 +1473,7 @@ async function importFromPDF(e) {
         
         // Check if this is a form creator PDF
         if (subject !== 'PDF Formular Ersteller Configuration') {
-            alert('Diese PDF-Datei wurde nicht mit dem Formular Ersteller erstellt oder enthält keine Konfiguration.');
+            showNotification('PDF Import Fehler', 'Diese PDF-Datei wurde nicht mit dem Formular Ersteller erstellt oder enthält keine Konfiguration.', 'error');
             return;
         }
         
@@ -1060,7 +1494,7 @@ async function importFromPDF(e) {
         }
         
         if (!configData) {
-            alert('Keine Konfigurationsdaten in der PDF gefunden.');
+            showNotification('Konfiguration fehlt', 'Keine Konfigurationsdaten in der PDF gefunden.', 'warning');
             return;
         }
         
@@ -1072,8 +1506,15 @@ async function importFromPDF(e) {
         
         // Load elements and form name
         if (config.formElements) {
-            formElements = config.formElements;
-            elementIdCounter = Math.max(...formElements.map(el => parseInt(el.id.split('_')[1]))) + 1;
+            // Reset element ID counter
+            elementIdCounter = 0;
+            
+            // Regenerate IDs for all elements to avoid conflicts
+            formElements = config.formElements.map(element => {
+                const newElement = {...element};
+                newElement.id = `element_${elementIdCounter++}`;
+                return newElement;
+            });
             
             formElements.forEach(element => {
                 createFormElementDOM(element);
@@ -1089,10 +1530,10 @@ async function importFromPDF(e) {
         // Show general properties if no element is selected
         showGeneralProperties();
         
-        alert('Konfiguration erfolgreich aus PDF geladen!');
+        showNotification('Import erfolgreich', 'Konfiguration erfolgreich aus PDF geladen!', 'success');
     } catch (error) {
         console.error('Error loading PDF:', error);
-        alert('Fehler beim Laden der PDF-Konfiguration: ' + error.message);
+        showNotification('Import fehlgeschlagen', 'Fehler beim Laden der PDF-Konfiguration: ' + error.message, 'error');
     }
 }
 
@@ -1187,6 +1628,54 @@ deleteElement = function() {
     }
 };
 
+// Format text function for WYSIWYG text elements
+function formatText(command) {
+    if (!selectedElement || selectedElement.type !== 'staticText') return;
+    
+    const div = document.getElementById(selectedElement.id);
+    const textDiv = div.querySelector('.wysiwyg-text');
+    
+    if (textDiv && textDiv.isContentEditable) {
+        // If currently editing, apply formatting to selection
+        document.execCommand(command, false, null);
+    } else {
+        // If not editing, toggle the formatting on the entire text
+        const currentContent = selectedElement.value || 'Doppelklick zum Bearbeiten';
+        let formattedContent = currentContent;
+        
+        switch(command) {
+            case 'bold':
+                if (formattedContent.includes('<b>') || formattedContent.includes('<strong>')) {
+                    formattedContent = formattedContent.replace(/<\/?b>/g, '').replace(/<\/?strong>/g, '');
+                } else {
+                    formattedContent = `<strong>${formattedContent}</strong>`;
+                }
+                break;
+            case 'italic':
+                if (formattedContent.includes('<i>') || formattedContent.includes('<em>')) {
+                    formattedContent = formattedContent.replace(/<\/?i>/g, '').replace(/<\/?em>/g, '');
+                } else {
+                    formattedContent = `<em>${formattedContent}</em>`;
+                }
+                break;
+            case 'underline':
+                if (formattedContent.includes('<u>')) {
+                    formattedContent = formattedContent.replace(/<\/?u>/g, '');
+                } else {
+                    formattedContent = `<u>${formattedContent}</u>`;
+                }
+                break;
+        }
+        
+        // Update the element value and DOM
+        selectedElement.value = formattedContent;
+        updateFormElementContent(div, selectedElement);
+        
+        // Save state for undo
+        saveState();
+    }
+}
+
 // Global functions for property updates
 window.updateProperty = updateProperty;
 window.updateOptions = updateOptions;
@@ -1198,6 +1687,9 @@ window.updateFormName = updateFormName;
 window.toggleCollapsible = toggleCollapsible;
 window.updatePageHeader = updatePageHeader;
 window.updatePageFooter = updatePageFooter;
+window.formatText = formatText;
+window.updateDefaultFont = updateDefaultFont;
+window.updateDefaultFontSize = updateDefaultFontSize;
 
 function openAboutModal() {
     document.getElementById('aboutModal').style.display = 'block';
