@@ -35,7 +35,17 @@ document.getElementById('addDropdown').addEventListener('click', () => addFormEl
 document.getElementById('addRadio').addEventListener('click', () => addFormElement('radio'));
 document.getElementById('addCheckbox').addEventListener('click', () => addFormElement('checkbox'));
 document.getElementById('addText').addEventListener('click', () => addFormElement('staticText'));
-document.getElementById('addImage').addEventListener('click', () => addFormElement('image'));
+document.getElementById('addImage').addEventListener('click', () => {
+    const element = addFormElement('image');
+    // Trigger image selection dialog immediately after creating image element
+    setTimeout(() => {
+        if (element) {
+            selectedElement = element;
+            selectElement(element.id);
+            document.getElementById('imageFileInput').click();
+        }
+    }, 100);
+});
 document.getElementById('addSubmit').addEventListener('click', () => addFormElement('submit'));
 
 document.getElementById('exportPDF').addEventListener('click', exportToPDF);
@@ -139,7 +149,7 @@ function addFormElement(type) {
         x: 50,
         y: 50,
         width: 200,
-        height: 40,
+        height: type === 'image' ? 150 : 40,  // Default height for images
         label: getDefaultLabel(type),
         name: `field_${elementIdCounter}`,
         required: false,
@@ -173,6 +183,8 @@ function addFormElement(type) {
     if (formElements.length === 1) {
         showGeneralProperties();
     }
+    
+    return element;  // Return the created element
 }
 
 function findFreePosition(width, height) {
@@ -342,9 +354,16 @@ function updateFormElementContent(div, element) {
         case 'image':
             div.className = 'form-element image-element';
             if (element.src) {
-                contentDiv.innerHTML = `<img src="${element.src}" alt="Bild">`;
+                const altText = element.alt || element.label || 'Bild';
+                contentDiv.innerHTML = `<img src="${element.src}" alt="${altText}" style="width: 100%; height: 100%; object-fit: contain; border-radius: 4px;">`;
             } else {
-                contentDiv.innerHTML = `<p>Klicken Sie zum Hochladen</p>`;
+                contentDiv.innerHTML = `
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #666; text-align: center; background: #f8f9fa; border-radius: 4px; border: 2px dashed #ddd;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🖼️</div>
+                        <div style="font-size: 14px;">Klicken Sie zum Hochladen</div>
+                        <div style="font-size: 12px; margin-top: 4px; opacity: 0.7;">oder verwenden Sie die Eigenschaften</div>
+                    </div>
+                `;
             }
             break;
         case 'submit':
@@ -756,6 +775,22 @@ function showProperties(element) {
             <div class="property-group">
                 <label>Optionen (eine pro Zeile)</label>
                 <textarea rows="5" onchange="updateOptions(this.value)">${element.options.join('\n')}</textarea>
+            </div>
+        `;
+    }
+    
+    if (element.type === 'image') {
+        fieldPropertiesContent += `
+            <div class="property-group">
+                <label>Bild</label>
+                <button type="button" onclick="selectImageForElement()" style="width: 100%; padding: 8px; border: 1px solid #3498db; background: #3498db; color: white; border-radius: 4px; cursor: pointer;">
+                    📁 Bild auswählen
+                </button>
+                ${element.src ? '<div style="margin-top: 5px; font-size: 12px; color: #666;">Bild geladen</div>' : '<div style="margin-top: 5px; font-size: 12px; color: #999;">Kein Bild ausgewählt</div>'}
+            </div>
+            <div class="property-group">
+                <label>Alt-Text</label>
+                <input type="text" value="${element.alt || ''}" onchange="updateProperty('alt', this.value)" placeholder="Bildbeschreibung">
             </div>
         `;
     }
@@ -1181,15 +1216,87 @@ function handleImageUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
     
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+        showNotification('Fehler', 'Bitte wählen Sie eine gültige Bilddatei aus.', 'error');
+        return;
+    }
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+        showNotification('Fehler', 'Die Bilddatei ist zu groß. Maximale Größe: 5MB', 'error');
+        return;
+    }
+    
     const reader = new FileReader();
     reader.onload = (event) => {
         if (selectedElement && selectedElement.type === 'image') {
+            // Save state for undo
+            saveState();
+            
+            // Create image to get dimensions for better sizing
+            const img = new Image();
+            img.onload = () => {
+                // Adjust element size to maintain aspect ratio if image is very large or small
+                const maxWidth = 400;
+                const maxHeight = 300;
+                const minWidth = 100;
+                const minHeight = 75;
+                
+                let newWidth = img.width;
+                let newHeight = img.height;
+                
+                // Scale down large images
+                if (newWidth > maxWidth || newHeight > maxHeight) {
+                    const scale = Math.min(maxWidth / newWidth, maxHeight / newHeight);
+                    newWidth *= scale;
+                    newHeight *= scale;
+                }
+                
+                // Scale up very small images
+                if (newWidth < minWidth && newHeight < minHeight) {
+                    const scale = Math.max(minWidth / newWidth, minHeight / newHeight);
+                    newWidth *= scale;
+                    newHeight *= scale;
+                }
+                
+                // Update element dimensions
+                selectedElement.width = Math.round(newWidth);
+                selectedElement.height = Math.round(newHeight);
+                
+                const div = document.getElementById(selectedElement.id);
+                div.style.width = selectedElement.width + 'px';
+                div.style.height = selectedElement.height + 'px';
+                
+                updateFormElementContent(div, selectedElement);
+                
+                // Update properties panel if currently showing this element
+                if (selectedElement) {
+                    showProperties(selectedElement);
+                }
+                
+                showNotification('Erfolg', `Bild wurde erfolgreich geladen (${selectedElement.width}×${selectedElement.height}px).`, 'success');
+            };
+            
             selectedElement.src = event.target.result;
-            const div = document.getElementById(selectedElement.id);
-            updateFormElementContent(div, selectedElement);
+            selectedElement.alt = selectedElement.alt || file.name.split('.')[0];
+            img.src = event.target.result;
         }
     };
+    reader.onerror = () => {
+        showNotification('Fehler', 'Fehler beim Laden der Bilddatei.', 'error');
+    };
     reader.readAsDataURL(file);
+    
+    // Reset file input for same file selection
+    e.target.value = '';
+}
+
+// Function to trigger image selection from properties panel
+function selectImageForElement() {
+    if (selectedElement && selectedElement.type === 'image') {
+        document.getElementById('imageFileInput').click();
+    }
 }
 
 page.addEventListener('click', (e) => {
@@ -1729,13 +1836,24 @@ async function exportToPDF() {
             case 'image':
                 if (element.src) {
                     try {
+                        // Better MIME type detection
+                        const mimeMatch = element.src.match(/data:image\/([^;]+)/);
+                        const mimeType = mimeMatch ? mimeMatch[1].toLowerCase() : 'jpeg';
+                        
                         const imageBytes = await fetch(element.src).then(res => res.arrayBuffer());
-                        const image = element.src.includes('data:image/png') ? 
-                            await pdfDoc.embedPng(imageBytes) : 
-                            await pdfDoc.embedJpg(imageBytes);
+                        
+                        let image;
+                        if (mimeType === 'png') {
+                            image = await pdfDoc.embedPng(imageBytes);
+                        } else {
+                            // Default to JPEG for all other formats (jpg, jpeg, etc.)
+                            image = await pdfDoc.embedJpg(imageBytes);
+                        }
+                        
                         pdfPage.drawImage(image, { x, y, width, height });
                     } catch (error) {
                         console.error('Error embedding image:', error);
+                        showNotification('Warnung', `Bild konnte nicht in PDF eingebettet werden: ${element.label}`, 'warning');
                     }
                 }
                 break;
